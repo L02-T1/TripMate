@@ -1,50 +1,57 @@
-# Welcome to your Expo app 👋
+# Chào mừng bạn đến với mẫu phát triển ứng dụng Expo của nhóm 4795 👋
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Đây là một dự án [Expo](https://expo.dev) được tạo bằng [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-## Get started
+## Bắt đầu
 
-1. Install dependencies
+1. Clone repository về máy.
+
+   `git clone git@github.com:DiKeVoi/Expo-Template.git`
+
+2. Cài đặt các dependency
 
    ```bash
    npm install
    ```
 
-2. Start the app
+3. Chạy ứng dụng
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+4. Nếu Expo thông báo đang chạy development build, chuyển sang Expo Go bằng cách nhấn `s`.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+5. Quét mã QR bằng cách sử dụng Expo Go (Android) và Camera (iOS).
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Đối với phần thuyết trình lần này, chúng ta sẽ sử dụng:
 
-## Get a fresh project
+- [Expo Go](https://expo.dev/go), một môi trường sandbox giới hạn để thử nghiệm phát triển ứng dụng với Expo.
 
-When you're ready, run:
+Bạn có thể tải Expo Go trên Play Store (Android) và App Store (iOS).
+
+Bạn có thể bắt đầu phát triển bằng cách chỉnh sửa các tệp bên trong thư mục **app**. Dự án này sử dụng [file-based routing](https://docs.expo.dev/router/introduction).
+
+## Tạo lại dự án mới
+
+Khi bạn sẵn sàng, hãy chạy:
 
 ```bash
 npm run reset-project
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Lệnh này sẽ chuyển mã khởi tạo sang thư mục **app-example** và tạo một thư mục **app** trống để bạn bắt đầu phát triển.
 
-## Learn more
+## Tìm hiểu thêm
 
-To learn more about developing your project with Expo, look at the following resources:
+Để tìm hiểu thêm về cách phát triển dự án Expo, hãy tham khảo các tài nguyên sau:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- [Tài liệu Expo](https://docs.expo.dev/): Tìm hiểu kiến thức nền tảng, hoặc đi sâu hơn với các [hướng dẫn](https://docs.expo.dev/guides).
+- [Hướng dẫn Learn Expo](https://docs.expo.dev/tutorial/introduction/): Làm theo hướng dẫn từng bước để tạo một dự án chạy được trên Android, iOS và web.
 
-## Join the community
+## Tham gia cộng đồng
 
-Join our community of developers creating universal apps.
+Tham gia cộng đồng các nhà phát triển đang xây dựng ứng dụng đa nền tảng.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [Expo trên GitHub](https://github.com/expo/expo): Xem nền tảng mã nguồn mở của chúng tôi và đóng góp.
+- [Cộng đồng Discord](https://chat.expo.dev): Trò chuyện với người dùng Expo và đặt câu hỏi.
