@@ -17,7 +17,7 @@
 3. Chạy ứng dụng
 
    ```bash
-   npx expo start
+   npm run start
    ```
 
 4. Nếu Expo thông báo đang chạy development build, chuyển sang Expo Go bằng cách nhấn `s`.
@@ -41,6 +41,16 @@ npm run reset-project
 ```
 
 Lệnh này sẽ chuyển mã khởi tạo sang thư mục **app-example** và tạo một thư mục **app** trống để bạn bắt đầu phát triển.
+
+## Không thể truy cập Expo Go
+
+Trong một vài trường hợp, thiết lập của mạng LAN sẽ không cho phép truy cập vào cổng của máy tính (port) do tường lửa. Khi đó, hãy chạy:
+
+```bash
+npm run start -- --tunnel
+```
+
+Khi đó, Expo sẽ sử dụng `ngrok` để tạo ra một URL, đóng vai trò là máy chủ proxy chuyển hướng đến port của máy tính, cho phép các thiết bị truy cập dù không chung Wi-Fi.
 
 ## Tìm hiểu thêm
 
