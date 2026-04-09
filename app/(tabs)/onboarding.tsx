@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    Pressable,
-    ScrollView,
-    Text,
-    useWindowDimensions,
-    View,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
 } from "react-native";
 
 import { Colors } from "@/constants/theme";
