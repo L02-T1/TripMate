@@ -1,11 +1,11 @@
 # TripMate – Expo React Native App
 
-[![Tests](https://github.com/YOUR_ORG/YOUR_REPO/actions/workflows/test.yml/badge.svg)](https://github.com/YOUR_ORG/YOUR_REPO/actions/workflows/test.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=YOUR_ORG_YOUR_PROJECT&metric=alert_status)](https://sonarcloud.io/project/overview?id=YOUR_ORG_YOUR_PROJECT)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=YOUR_ORG_YOUR_PROJECT&metric=coverage)](https://sonarcloud.io/project/overview?id=YOUR_ORG_YOUR_PROJECT)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=YOUR_ORG_YOUR_PROJECT&metric=sqale_rating)](https://sonarcloud.io/project/overview?id=YOUR_ORG_YOUR_PROJECT)
-[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=YOUR_ORG_YOUR_PROJECT&metric=reliability_rating)](https://sonarcloud.io/project/overview?id=YOUR_ORG_YOUR_PROJECT)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=YOUR_ORG_YOUR_PROJECT&metric=security_rating)](https://sonarcloud.io/project/overview?id=YOUR_ORG_YOUR_PROJECT)
+[![Tests](https://github.com/L02-T1/TripMate/actions/workflows/test.yml/badge.svg)](https://github.com/L02-T1/TripMate/actions/workflows/test.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=L02-T1_TripMate&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=L02-T1_TripMate)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=L02-T1_TripMate&metric=coverage)](https://sonarcloud.io/summary/new_code?id=L02-T1_TripMate)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=L02-T1_TripMate&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=L02-T1_TripMate)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=L02-T1_TripMate&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=L02-T1_TripMate)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=L02-T1_TripMate&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=L02-T1_TripMate)
 
 Ứng dụng quản lý chuyến đi nhóm — lên kế hoạch, chia sẻ chi phí và theo dõi lịch trình.
 
@@ -47,28 +47,34 @@ npm run android  # Android emulator
 ## 🧪 Hướng dẫn chạy test locally
 
 ### Chạy toàn bộ test
+
 ```bash
 npm test
 ```
 
 ### Chạy với coverage report
+
 ```bash
 npm run test:coverage
 ```
+
 Coverage report tại: `coverage/lcov-report/index.html`
 
 ### Watch mode (development)
+
 ```bash
 npm run test:watch
 ```
 
 ### Chạy file test cụ thể
+
 ```bash
 npx jest __tests__/OnboardingScreen.test.tsx
 npx jest __tests__/HomeScreen.test.tsx
 ```
 
 ### Xem HTML test report
+
 Sau khi chạy test, mở: `test-report/index.html`
 
 ---
@@ -89,6 +95,7 @@ File: `.github/workflows/test.yml`
 Pipeline: checkout → setup Node 20 → npm ci → test + coverage → upload artifacts → SonarCloud scan
 
 **Artifacts sau mỗi run:**
+
 - `test-report/index.html` — HTML test report
 - `coverage/lcov.info` — Coverage cho SonarCloud
 
@@ -96,12 +103,12 @@ Pipeline: checkout → setup Node 20 → npm ci → test + coverage → upload a
 
 ## 📊 Màn hình chính
 
-| Màn hình | Mô tả |
-|---|---|
-| Onboarding 1 | Chào mừng đến với TripMate |
-| Onboarding 2 | Mời bạn bè tham gia chuyến đi |
-| Onboarding 3 | Ghi chép chi phí tiền lợi |
-| Onboarding 4 | Lập kế hoạch chi tiết |
+| Màn hình       | Mô tả                                         |
+| -------------- | --------------------------------------------- |
+| Onboarding 1   | Chào mừng đến với TripMate                    |
+| Onboarding 2   | Mời bạn bè tham gia chuyến đi                 |
+| Onboarding 3   | Ghi chép chi phí tiền lợi                     |
+| Onboarding 4   | Lập kế hoạch chi tiết                         |
 | Home Dashboard | Danh sách chuyến đi với trạng thái và chi phí |
 
 ---
@@ -110,27 +117,27 @@ Pipeline: checkout → setup Node 20 → npm ci → test + coverage → upload a
 
 ### OnboardingScreen.test.tsx (8 cases)
 
-| # | Test |
-|---|---|
-| 1 | renders without crashing |
-| 2 | renders skip button |
-| 3 | renders next button |
-| 4 | skip navigates to /tabs/home |
-| 5 | renders 4 pagination dots |
-| 6 | renders onboarding flatlist |
-| 7 | next button has correct accessibility label |
-| 8 | pressing next does not crash |
+| #   | Test                                        |
+| --- | ------------------------------------------- |
+| 1   | renders without crashing                    |
+| 2   | renders skip button                         |
+| 3   | renders next button                         |
+| 4   | skip navigates to /tabs/home                |
+| 5   | renders 4 pagination dots                   |
+| 6   | renders onboarding flatlist                 |
+| 7   | next button has correct accessibility label |
+| 8   | pressing next does not crash                |
 
 ### HomeScreen.test.tsx (9 cases)
 
-| # | Test |
-|---|---|
-| 1 | renders without crashing |
-| 2 | renders trip list |
-| 3 | renders both trip cards |
-| 4 | renders add trip FAB button |
-| 5 | pressing FAB does not crash |
-| 6 | search toggle button renders |
-| 7 | pressing search shows input |
-| 8 | search input filters trips |
-| 9 | empty state shown when no match |
+| #   | Test                            |
+| --- | ------------------------------- |
+| 1   | renders without crashing        |
+| 2   | renders trip list               |
+| 3   | renders both trip cards         |
+| 4   | renders add trip FAB button     |
+| 5   | pressing FAB does not crash     |
+| 6   | search toggle button renders    |
+| 7   | pressing search shows input     |
+| 8   | search input filters trips      |
+| 9   | empty state shown when no match |
