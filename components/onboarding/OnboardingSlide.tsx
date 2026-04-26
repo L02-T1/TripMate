@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, Text, View, StyleSheet } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 
 export interface OnboardingItem {
   id: string;
@@ -19,8 +19,10 @@ export default function OnboardingSlide({
   height: number;
 }) {
   return (
-    <View style={[styles.container, { width }]} testID={`onboarding-slide-${item.id}`}>
-
+    <View
+      style={[styles.container, { width }]}
+      testID={`onboarding-slide-${item.id}`}
+    >
       {/* IMAGE */}
       <Image
         source={{ uri: item.image }}
