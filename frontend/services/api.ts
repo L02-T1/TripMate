@@ -2,7 +2,11 @@ import { secureGet, secureSet, secureDel } from './storage';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://tripmate-api.railway.app';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+
+if (!BASE_URL) {
+  throw new Error("EXPO_PUBLIC_API_URL is not defined in .env");
+}
 const TOKEN_KEY = 'tripmate_token';
 
 // ─── Token management ─────────────────────────────────────────────────────────

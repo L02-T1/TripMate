@@ -89,10 +89,11 @@ app.use((err, req, res, _next) => {
 // ── Start ─────────────────────────────────────────────────────────────────────
 const start = async () => {
   await connect();
-  app.listen(PORT, () => {
-    logger.info(`\n🚀 TripMate API    http://localhost:${PORT}`);
-    logger.info(`📖 Swagger Docs    http://localhost:${PORT}/api-docs`);
-    logger.info(`💚 Health Check    http://localhost:${PORT}/health\n`);
+
+  app.listen(PORT, "0.0.0.0", () => {
+    logger.info(`🚀 TripMate API running on port ${PORT}`);
+    logger.info(`📖 Swagger Docs /api-docs`);
+    logger.info(`💚 Health Check /health`);
   });
 };
 
