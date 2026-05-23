@@ -9,7 +9,7 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 # Copy source code
-COPY src/ ./src/
+COPY . .
 
 # Expose port
 EXPOSE 3000
