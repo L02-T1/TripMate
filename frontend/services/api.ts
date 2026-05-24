@@ -173,7 +173,13 @@ const members = {
     patch<any>(`/trips/${tripId}/members/${memberId}/promote`, {}),
 };
 
+const users = {
+  findByPhone: (phone: string) => get<any>(`/users/search?phone=${encodeURIComponent(phone)}`),
+  findByEmail: (email: string) => get<any>(`/users/search?email=${encodeURIComponent(email)}`),
+  search: (query: string) => get<any[]>(`/users/search?q=${encodeURIComponent(query)}`),
+};
+
 // ─── Default export ───────────────────────────────────────────────────────────
 
-const api = { auth, trips, activities, checklist, expenses, members };
+const api = { auth, trips, activities, checklist, expenses, members, users };
 export default api;

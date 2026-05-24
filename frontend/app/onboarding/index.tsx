@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
@@ -62,6 +63,7 @@ export default function OnboardingScreen() {
       listRef.current?.scrollToIndex({ index: next, animated: true });
       setCurrent(next);
     } else {
+      AsyncStorage.setItem('tripmate_onboarding_done', 'true');
       router.replace('/(auth)/sign-in');
     }
   };
@@ -117,7 +119,7 @@ export default function OnboardingScreen() {
         </View>
         <TouchableOpacity
           style={styles.skipPill}
-          onPress={() => router.replace('/(auth)/sign-in')}
+          onPress={() => { AsyncStorage.setItem('tripmate_onboarding_done', 'true'); router.replace('/(auth)/sign-in'); }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Text style={styles.skipText}>Bỏ qua</Text>

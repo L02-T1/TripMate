@@ -67,6 +67,7 @@ app.get('/api-docs.json', (_, res) => res.json(swaggerSpec));
 app.use('/auth', require('./routes/auth'));
 app.use('/trips', require('./routes/trips'));
 app.use('/notifications', require('./routes/notifications'));
+app.use('/users', require('./routes/users'));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_, res) => res.json({

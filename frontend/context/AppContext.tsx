@@ -4,6 +4,7 @@ import api, { clearToken, getToken, setToken } from '../services/api';
 import analytics from '../services/analytics';
 import { Activity, ChecklistItem, Expense, Member, Trip, User } from '../types';
 import { computeTripStatus, getTripImage, getInitials } from '../utils/helpers';
+import { logAction, logError, logInfo, logWarn, logDebug } from '../utils/logger';
 
 const TRIPS_CACHE_KEY = 'tripmate_trips_v2';
 const USER_CACHE_KEY  = 'tripmate_user_v2';
@@ -27,6 +28,7 @@ interface AppContextType {
   createTrip: (data: { name: string; startDate: string; endDate: string; description: string; destinations: string[]; memberPhones: string[] }) => Promise<Trip>;
   deleteTrip: (id: string) => Promise<void>;
   joinTrip: (inviteCode: string) => Promise<Trip | null>;
+  findUser: (query: string) => Promise<any | null>;
   addActivity: (tripId: string, data: Omit<Activity, 'id' | 'tripId'>) => Promise<void>;
   updateActivity: (tripId: string, actId: string, data: Partial<Activity>) => Promise<void>;
   deleteActivity: (tripId: string, actId: string) => Promise<void>;
@@ -55,25 +57,22 @@ const MOCK_TRIPS: Trip[] = [
     image: getTripImage(['Đà Lạt']),
     members: [
       { id: 'm1', name: 'Alex Nguyen', phone: '+84901234567', role: 'leader', initials: 'AN' },
-      { id: 'm2', name: 'Bao Tran', phone: '+84912345678',  role: 'member', initials: 'BT' },
-      { id: 'm3', name: 'Cô Nguyen', phone: '+84923456789', role: 'member', initials: 'CN' },
-      { id: 'm4', name: 'Minh Le',   phone: '+84934567890', role: 'member', initials: 'ML' },
+      { id: 'm2', name: 'Bao Tran',    phone: '+84912345678', role: 'member', initials: 'BT' },
+      { id: 'm3', name: 'Cô Nguyen',  phone: '+84923456789', role: 'member', initials: 'CN' },
+      { id: 'm4', name: 'Minh Le',     phone: '+84934567890', role: 'member', initials: 'ML' },
     ],
     activities: [
       { id: 'a1', tripId: 'trip-1', name: 'Khởi hành từ TP.HCM', location: 'Sân bay Tân Sơn Nhất', date: '28/06/2025', time: '06:00', type: ['Di chuyển'], participants: ['m1','m2','m3','m4'], note: '' },
       { id: 'a2', tripId: 'trip-1', name: 'Tham quan Hồ Xuân Hương', location: 'Trung tâm TP. Đà Lạt', date: '30/06/2025', time: '15:00', type: ['Tham quan'], participants: ['m1','m2','m3'], note: 'Mang theo ô vì trời có thể mưa.' },
-      { id: 'a3', tripId: 'trip-1', name: 'Cáp treo Langbiang', location: 'Núi Langbiang', date: '01/07/2025', time: '08:00', type: ['Tham quan', 'Vui chơi'], participants: ['m1','m2','m3','m4'], note: 'Đặt vé trước online' },
     ],
     checklist: [
-      { id: 'c1', tripId: 'trip-1', name: 'Lều cắm trại',    category: 'shared',   assignee: 'Alex', dueDate: '27/06/2025', note: '', completed: false },
-      { id: 'c2', tripId: 'trip-1', name: 'Bộ sơ cứu',       category: 'shared',   assignee: 'Bao',  dueDate: '27/06/2025', note: '', completed: true  },
-      { id: 'c3', tripId: 'trip-1', name: 'Máy ảnh',         category: 'personal', assignee: 'Cô',   dueDate: '27/06/2025', note: '', completed: false },
-      { id: 'c4', tripId: 'trip-1', name: 'Đặt xe limousine',category: 'todo',     assignee: 'Minh', dueDate: '25/06/2025', note: '', completed: true  },
+      { id: 'c1', tripId: 'trip-1', name: 'Lều cắm trại',     category: 'shared',   assignee: 'Alex', dueDate: '27/06/2025', note: '', completed: false },
+      { id: 'c2', tripId: 'trip-1', name: 'Bộ sơ cứu',        category: 'shared',   assignee: 'Bao',  dueDate: '27/06/2025', note: '', completed: true  },
+      { id: 'c3', tripId: 'trip-1', name: 'Đặt xe limousine', category: 'todo',     assignee: 'Minh', dueDate: '25/06/2025', note: '', completed: true  },
     ],
     expenses: [
       { id: 'e1', tripId: 'trip-1', name: 'Xe limousine',  amount: 1200000, category: 'Di chuyển', paidBy: 'Bao',  date: '28/06/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
       { id: 'e2', tripId: 'trip-1', name: 'Khách sạn Ana', amount: 4800000, category: 'Chỗ ở',     paidBy: 'Alex', date: '29/06/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
-      { id: 'e3', tripId: 'trip-1', name: 'Vé cáp treo',   amount: 900000,  category: 'Vui chơi',  paidBy: 'Cô',   date: '01/07/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
     ],
   },
   {
@@ -104,8 +103,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const bootstrap = async () => {
     analytics.init();
-    console.log('[App] Bootstrapping...');
-
+    logInfo('App', 'Bootstrapping...');
     try {
       const token = await getToken();
       if (token) {
@@ -119,10 +117,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(tripsData)),
           ]);
           analytics.identify(userData.id, { email: userData.email });
-          console.log('[App] Online – loaded', tripsData.length, 'trips for', userData.email);
+          logInfo('App', `Online – loaded ${tripsData.length} trips for ${userData.email}`);
         } catch (apiErr: any) {
-          // Network error – try cache
-          console.warn('[App] API unreachable, loading cache. Reason:', apiErr?.message);
+          logWarn('App', 'API unreachable, loading cache. Reason: ' + apiErr?.message);
           const [cu, ct] = await Promise.all([
             AsyncStorage.getItem(USER_CACHE_KEY),
             AsyncStorage.getItem(TRIPS_CACHE_KEY),
@@ -132,13 +129,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setIsOnline(false);
         }
       } else {
-        // Not logged in – show mock data so app is usable in demo mode
-        console.log('[App] No token – showing demo data');
+        logInfo('App', 'No token – showing demo data');
         const ct = await AsyncStorage.getItem(TRIPS_CACHE_KEY);
         setTrips(ct ? JSON.parse(ct) : MOCK_TRIPS);
       }
     } catch (err: any) {
-      console.error('[App] Bootstrap unexpected error:', err.message);
+      logError('App', 'Bootstrap unexpected error', err);
       setTrips(MOCK_TRIPS);
     } finally {
       setLoading(false);
@@ -149,23 +145,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshTrips = useCallback(async () => {
     if (!isOnline) {
-      console.warn('[App] refreshTrips: offline, skipping');
+      logWarn('App', 'refreshTrips: offline, skipping');
       return;
     }
     try {
       const data = await api.trips.list();
       setTrips(data);
       await AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(data));
-      console.log('[App] refreshTrips: loaded', data.length, 'trips');
+      logInfo('App', `refreshTrips: loaded ${data.length} trips`);
     } catch (err: any) {
-      console.error('[App] refreshTrips error:', err.message);
+      logError('App', 'refreshTrips error', err);
     }
   }, [isOnline]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────────
 
   const signIn = async (emailOrPhone: string, password: string): Promise<boolean> => {
-    console.log('[Auth] Attempting sign-in:', emailOrPhone);
+    if (!emailOrPhone.trim()) {
+      logWarn('Auth', 'signIn: emailOrPhone is empty');
+      return false;
+    }
+    if (!password) {
+      logWarn('Auth', 'signIn: password is empty');
+      return false;
+    }
+    logAction('Auth', 'Attempting sign-in: ' + emailOrPhone);
     try {
       const { token, user: userData } = await api.auth.login(emailOrPhone, password);
       await setToken(token);
@@ -177,13 +181,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(tripsData));
       analytics.identify(userData.id, { email: userData.email });
       analytics.track('sign_in', { method: 'email_phone' });
-      console.log('[Auth] Sign-in success:', userData.email);
+      logInfo('Auth', 'Sign-in success: ' + userData.email);
       return true;
     } catch (err: any) {
-      console.warn('[Auth] Sign-in failed:', err.message);
+      logWarn('Auth', 'Sign-in failed: ' + (err?.data?.error || err.message));
       // Offline demo fallback
       if (emailOrPhone === 'demo@tripmate.app' && password === 'Demo@123') {
-        console.log('[Auth] Using offline demo credentials');
+        logInfo('Auth', 'Using offline demo credentials');
         const demoUser: User = {
           id: 'demo', email: 'demo@tripmate.app',
           username: 'Demo User', phone: '+84900000000',
@@ -199,7 +203,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, username: string, phone: string, password: string): Promise<boolean> => {
-    console.log('[Auth] Attempting registration:', email);
+    if (!email.trim() || !username.trim() || !phone.trim() || !password) {
+      logWarn('Auth', 'signUp: missing required fields');
+      throw new Error('Vui lòng điền đầy đủ thông tin');
+    }
+    if (password.length < 6) {
+      logWarn('Auth', 'signUp: password too short');
+      throw new Error('Mật khẩu phải có ít nhất 6 ký tự');
+    }
+    logAction('Auth', 'Attempting registration: ' + email);
     try {
       const { token, user: userData } = await api.auth.register(email, username, phone, password);
       await setToken(token);
@@ -208,52 +220,124 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setTrips([]);
       analytics.identify(userData.id, { email: userData.email });
       analytics.track('sign_up');
-      console.log('[Auth] Registration success:', email);
+      logInfo('Auth', 'Registration success: ' + email);
       return true;
     } catch (err: any) {
-      console.error('[Auth] Registration error:', err?.data?.error || err.message);
-      throw err; // Let the form handle the error message
+      logError('Auth', 'Registration error', err?.data?.error || err.message);
+      throw err;
     }
   };
 
   const signOut = async () => {
-    console.log('[Auth] Signing out');
-    await clearToken();
-    await AsyncStorage.multiRemove([USER_CACHE_KEY, TRIPS_CACHE_KEY]);
-    setUser(null);
-    setTrips(MOCK_TRIPS);
-    setIsOnline(false);
-    analytics.reset();
+    logAction('Auth', 'Signing out user: ' + (user?.email || 'unknown'));
+    try {
+      await clearToken();
+      await AsyncStorage.multiRemove([USER_CACHE_KEY, TRIPS_CACHE_KEY]);
+      setUser(null);
+      setTrips([]);
+      setIsOnline(false);
+      analytics.reset();
+      logInfo('Auth', 'Signed out successfully');
+    } catch (err: any) {
+      logError('Auth', 'signOut error', err);
+      // Still clear state even if storage fails
+      setUser(null);
+      setTrips([]);
+    }
   };
 
   const updateUser = async (data: Partial<User>) => {
+    if (!user) {
+      logWarn('Auth', 'updateUser: no user logged in');
+      return;
+    }
     try {
       if (isOnline) {
         const updated = await api.auth.updateProfile(data);
         setUser(updated);
         await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(updated));
-        console.log('[Auth] Profile updated');
-      } else if (user) {
-        console.warn('[Auth] updateUser: offline, updating local only');
+        logInfo('Auth', 'Profile updated');
+      } else {
+        logWarn('Auth', 'updateUser: offline, updating local only');
         const updated = { ...user, ...data };
         setUser(updated);
         await AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(updated));
       }
     } catch (err: any) {
-      console.error('[Auth] updateUser error:', err.message);
+      logError('Auth', 'updateUser error', err);
       throw err;
     }
   };
 
   const changePassword = async (current: string, newPwd: string): Promise<boolean> => {
+    if (!current || !newPwd) {
+      logWarn('Auth', 'changePassword: missing fields');
+      return false;
+    }
+    if (newPwd.length < 6) {
+      logWarn('Auth', 'changePassword: new password too short');
+      return false;
+    }
+    if (current === newPwd) {
+      logWarn('Auth', 'changePassword: new password same as current');
+      return false;
+    }
     try {
       await api.auth.changePassword(current, newPwd);
       analytics.track('change_password');
-      console.log('[Auth] Password changed');
+      logInfo('Auth', 'Password changed successfully');
       return true;
     } catch (err: any) {
-      console.error('[Auth] changePassword error:', err?.data?.error || err.message);
+      logError('Auth', 'changePassword error', err?.data?.error || err.message);
       return false;
+    }
+  };
+
+  // ── User search ───────────────────────────────────────────────────────────────
+
+  /**
+   * Find a user by phone number, email, or keyword.
+   * Returns the user object or null if not found / offline.
+   */
+  const findUser = async (query: string): Promise<any | null> => {
+    const q = query.trim();
+    if (!q) {
+      logWarn('Users', 'findUser: empty query');
+      return null;
+    }
+    if (!isOnline) {
+      logWarn('Users', 'findUser: offline – cannot search users');
+      return null;
+    }
+    logAction('Users', `findUser: "${q}"`);
+    try {
+      const isEmail = q.includes('@');
+      const isPhone = /^[0-9+\-\s]{7,}$/.test(q);
+
+      let result: any = null;
+      if (isEmail) {
+        result = await api.users.findByEmail(q);
+      } else if (isPhone) {
+        result = await api.users.findByPhone(q);
+      } else {
+        const results = await api.users.search(q);
+        result = results?.[0] || null;
+      }
+
+      if (result) {
+        logInfo('Users', `findUser: found user "${result.username || result.email}"`);
+      } else {
+        logWarn('Users', `findUser: no result for "${q}"`);
+      }
+      return result;
+    } catch (err: any) {
+      // 404 = not found (not an error)
+      if (err?.status === 404 || err?.response?.status === 404) {
+        logInfo('Users', `findUser: not found for "${q}"`);
+        return null;
+      }
+      logError('Users', 'findUser API error', err?.data?.error || err.message);
+      return null;
     }
   };
 
@@ -262,7 +346,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const getTrip = (id: string): Trip | undefined => {
     const t = trips.find(t => t.id === id);
     if (!t) {
-      console.warn('[App] getTrip: not found id=', id);
+      logWarn('App', `getTrip: not found id=${id}`);
       return undefined;
     }
     return { ...t, status: computeTripStatus(t.startDate, t.endDate) };
@@ -273,7 +357,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTrips(prev => {
       const next = prev.map(t => (t.id === id ? updater(t) : t));
       AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(next)).catch(e =>
-        console.warn('[Cache] setItem error:', e.message)
+        logWarn('Cache', 'setItem error: ' + e.message)
       );
       return next;
     });
@@ -281,22 +365,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ── Trips CRUD ────────────────────────────────────────────────────────────────
 
-  const createTrip = async (data: { name: string; startDate: string; endDate: string; description: string; destinations: string[]; memberPhones: string[] }): Promise<Trip> => {
+  const createTrip = async (data: {
+    name: string; startDate: string; endDate: string;
+    description: string; destinations: string[]; memberPhones: string[]
+  }): Promise<Trip> => {
+    if (!data.name?.trim()) {
+      logWarn('Trip', 'createTrip: name is required');
+      throw new Error('Tên chuyến đi là bắt buộc');
+    }
+    if (!data.startDate || !data.endDate) {
+      logWarn('Trip', 'createTrip: missing dates');
+      throw new Error('Ngày bắt đầu và kết thúc là bắt buộc');
+    }
+    if (!data.destinations || data.destinations.length === 0) {
+      logWarn('Trip', 'createTrip: no destinations');
+      throw new Error('Vui lòng chọn ít nhất một điểm đến');
+    }
     analytics.track('create_trip', { name: data.name, destinations: data.destinations });
     if (isOnline) {
       try {
         const trip = await api.trips.create(data);
         setTrips(prev => [trip, ...prev]);
         await AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify([trip, ...trips]));
-        console.log('[Trip] Created online:', trip.id);
+        logInfo('Trip', `Created online: ${trip.id} – "${trip.name}"`);
         return trip;
       } catch (err: any) {
-        console.error('[Trip] createTrip API error:', err?.data?.error || err.message);
+        logError('Trip', 'createTrip API error', err?.data?.error || err.message);
         throw err;
       }
     }
-    // Offline
-    console.warn('[Trip] createTrip: offline, creating locally');
+    logWarn('Trip', 'createTrip: offline, creating locally');
     const newTrip: Trip = {
       id: uid(), ...data,
       memberCount: 1 + data.memberPhones.length,
@@ -313,24 +411,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteTrip = async (id: string) => {
+    logAction('Trip', `deleteTrip: ${id}`);
     setTrips(prev => prev.filter(t => t.id !== id));
     await AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(trips.filter(t => t.id !== id)));
     if (isOnline) {
       try {
         await api.trips.delete(id);
         analytics.track('delete_trip', { tripId: id });
-        console.log('[Trip] Deleted online:', id);
+        logInfo('Trip', `Deleted: ${id}`);
       } catch (err: any) {
-        console.error('[Trip] deleteTrip error:', err.message);
+        logError('Trip', 'deleteTrip error', err.message);
       }
     }
   };
 
   const joinTrip = async (inviteCode: string): Promise<Trip | null> => {
-    if (!inviteCode.trim()) return null;
-    // Check local mock data first
+    if (!inviteCode.trim()) {
+      logWarn('Trip', 'joinTrip: inviteCode is empty');
+      return null;
+    }
+    logAction('Trip', `joinTrip: ${inviteCode}`);
     const found = trips.find(t => (t.inviteCode || '').toUpperCase() === inviteCode.toUpperCase());
-    if (found) return found;
+    if (found) {
+      logWarn('Trip', `joinTrip: already a member of trip ${found.id}`);
+      return found;
+    }
     if (isOnline) {
       try {
         const trip = await api.trips.join(inviteCode);
@@ -342,13 +447,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
         analytics.track('join_trip', { inviteCode });
-        console.log('[Trip] Joined trip:', normalized.id);
+        logInfo('Trip', `Joined trip: ${normalized.id}`);
         return normalized;
       } catch (err: any) {
-        console.error('[Trip] joinTrip error:', err?.data?.error || err.message);
+        logError('Trip', 'joinTrip error', err?.data?.error || err.message);
         return null;
       }
     }
+    logWarn('Trip', 'joinTrip: offline, cannot join');
     return null;
   };
 
@@ -356,8 +462,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addActivity = async (tripId: string, data: Omit<Activity, 'id' | 'tripId'>) => {
     if (!data.name?.trim()) {
-      console.warn('[Activity] addActivity: name is required');
+      logWarn('Activity', 'addActivity: name is required');
       throw new Error('Tên hoạt động là bắt buộc');
+    }
+    if (!tripId) {
+      logWarn('Activity', 'addActivity: tripId is required');
+      throw new Error('Không xác định được chuyến đi');
     }
     const tempId = uid();
     updateLocalTrip(tripId, t => ({ ...t, activities: [...t.activities, { id: tempId, tripId, ...data }] }));
@@ -366,26 +476,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const act = await api.activities.add(tripId, data);
         updateLocalTrip(tripId, t => ({ ...t, activities: t.activities.map(a => a.id === tempId ? { ...act, id: act.id || act._id || tempId } : a) }));
         analytics.track('add_activity', { tripId, name: data.name });
-        console.log('[Activity] Added:', data.name, 'to trip', tripId);
+        logInfo('Activity', `Added: "${data.name}" to trip ${tripId}`);
       } catch (err: any) {
-        console.error('[Activity] addActivity API error:', err.message);
+        logError('Activity', 'addActivity API error', err.message);
       }
     }
   };
 
   const updateActivity = async (tripId: string, actId: string, data: Partial<Activity>) => {
+    if (!tripId || !actId) {
+      logWarn('Activity', 'updateActivity: missing tripId or actId');
+      return;
+    }
     updateLocalTrip(tripId, t => ({ ...t, activities: t.activities.map(a => a.id === actId ? { ...a, ...data } : a) }));
     if (isOnline) {
       try { await api.activities.update(tripId, actId, data); }
-      catch (err: any) { console.error('[Activity] updateActivity error:', err.message); }
+      catch (err: any) { logError('Activity', 'updateActivity error', err.message); }
     }
   };
 
   const deleteActivity = async (tripId: string, actId: string) => {
+    logAction('Activity', `deleteActivity: ${actId} from trip ${tripId}`);
     updateLocalTrip(tripId, t => ({ ...t, activities: t.activities.filter(a => a.id !== actId) }));
     if (isOnline) {
       try { await api.activities.delete(tripId, actId); analytics.track('delete_activity', { tripId, actId }); }
-      catch (err: any) { console.error('[Activity] deleteActivity error:', err.message); }
+      catch (err: any) { logError('Activity', 'deleteActivity error', err.message); }
     }
   };
 
@@ -393,7 +508,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addChecklistItem = async (tripId: string, data: Omit<ChecklistItem, 'id' | 'tripId'>) => {
     if (!data.name?.trim()) {
-      console.warn('[Checklist] addChecklistItem: name is required');
+      logWarn('Checklist', 'addChecklistItem: name is required');
       throw new Error('Tên mục là bắt buộc');
     }
     const tempId = uid();
@@ -402,9 +517,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const item = await api.checklist.add(tripId, data);
         updateLocalTrip(tripId, t => ({ ...t, checklist: t.checklist.map(c => c.id === tempId ? { ...item, id: item.id || item._id || tempId } : c) }));
-        console.log('[Checklist] Added:', data.name);
+        logInfo('Checklist', `Added: "${data.name}"`);
       } catch (err: any) {
-        console.error('[Checklist] addChecklistItem API error:', err.message);
+        logError('Checklist', 'addChecklistItem API error', err.message);
       }
     }
   };
@@ -413,7 +528,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateLocalTrip(tripId, t => ({ ...t, checklist: t.checklist.map(c => c.id === itemId ? { ...c, ...data } : c) }));
     if (isOnline) {
       try { await api.checklist.update(tripId, itemId, data); }
-      catch (err: any) { console.error('[Checklist] updateChecklistItem error:', err.message); }
+      catch (err: any) { logError('Checklist', 'updateChecklistItem error', err.message); }
     }
   };
 
@@ -421,7 +536,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     updateLocalTrip(tripId, t => ({ ...t, checklist: t.checklist.filter(c => c.id !== itemId) }));
     if (isOnline) {
       try { await api.checklist.delete(tripId, itemId); }
-      catch (err: any) { console.error('[Checklist] deleteChecklistItem error:', err.message); }
+      catch (err: any) { logError('Checklist', 'deleteChecklistItem error', err.message); }
     }
   };
 
@@ -429,12 +544,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addExpense = async (tripId: string, data: Omit<Expense, 'id' | 'tripId'>) => {
     if (!data.name?.trim()) {
-      console.warn('[Expense] addExpense: name is required');
+      logWarn('Expense', 'addExpense: name is required');
       throw new Error('Tên khoản chi là bắt buộc');
     }
     if (!data.amount || data.amount <= 0) {
-      console.warn('[Expense] addExpense: invalid amount', data.amount);
+      logWarn('Expense', `addExpense: invalid amount ${data.amount}`);
       throw new Error('Số tiền phải lớn hơn 0');
+    }
+    if (!data.paidBy?.trim()) {
+      logWarn('Expense', 'addExpense: paidBy is required');
+      throw new Error('Vui lòng chọn người trả');
     }
     const tempId = uid();
     updateLocalTrip(tripId, t => ({ ...t, expenses: [...t.expenses, { id: tempId, tripId, ...data }] }));
@@ -443,26 +562,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const exp = await api.expenses.add(tripId, data);
         updateLocalTrip(tripId, t => ({ ...t, expenses: t.expenses.map(e => e.id === tempId ? { ...exp, id: exp.id || exp._id || tempId } : e) }));
         analytics.track('add_expense', { tripId, amount: data.amount, category: data.category });
-        console.log('[Expense] Added:', data.name, data.amount, 'đ');
+        logInfo('Expense', `Added: "${data.name}" – ${data.amount.toLocaleString('vi-VN')}đ`);
       } catch (err: any) {
-        console.error('[Expense] addExpense API error:', err.message);
+        logError('Expense', 'addExpense API error', err.message);
       }
     }
   };
 
   const updateExpense = async (tripId: string, expId: string, data: Partial<Expense>) => {
+    if (data.amount !== undefined && data.amount <= 0) {
+      logWarn('Expense', 'updateExpense: invalid amount');
+      throw new Error('Số tiền phải lớn hơn 0');
+    }
     updateLocalTrip(tripId, t => ({ ...t, expenses: t.expenses.map(e => e.id === expId ? { ...e, ...data } : e) }));
     if (isOnline) {
       try { await api.expenses.update(tripId, expId, data); }
-      catch (err: any) { console.error('[Expense] updateExpense error:', err.message); }
+      catch (err: any) { logError('Expense', 'updateExpense error', err.message); }
     }
   };
 
   const deleteExpense = async (tripId: string, expId: string) => {
+    logAction('Expense', `deleteExpense: ${expId} from trip ${tripId}`);
     updateLocalTrip(tripId, t => ({ ...t, expenses: t.expenses.filter(e => e.id !== expId) }));
     if (isOnline) {
       try { await api.expenses.delete(tripId, expId); }
-      catch (err: any) { console.error('[Expense] deleteExpense error:', err.message); }
+      catch (err: any) { logError('Expense', 'deleteExpense error', err.message); }
     }
   };
 
@@ -470,28 +594,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addMember = async (tripId: string, phone: string): Promise<boolean> => {
     if (!phone.trim()) {
-      console.warn('[Member] addMember: phone is required');
+      logWarn('Member', 'addMember: phone is required');
       return false;
     }
     const trip = trips.find(t => t.id === tripId);
-    if (trip?.members.find(m => m.phone === phone)) {
-      console.warn('[Member] addMember: phone already a member:', phone);
+    if (!trip) {
+      logWarn('Member', `addMember: trip not found id=${tripId}`);
       return false;
     }
+    if (trip.members.find(m => m.phone === phone)) {
+      logWarn('Member', `addMember: ${phone} already a member of trip ${tripId}`);
+      return false;
+    }
+    logAction('Member', `addMember: phone=${phone} to trip=${tripId}`);
     if (isOnline) {
       try {
         await api.members.add(tripId, phone);
         await refreshTrips();
         analytics.track('add_member', { tripId, phone });
-        console.log('[Member] Added phone:', phone, 'to trip:', tripId);
+        logInfo('Member', `Added ${phone} to trip ${tripId}`);
         return true;
       } catch (err: any) {
-        console.error('[Member] addMember API error:', err?.data?.error || err.message);
+        logError('Member', 'addMember API error', err?.data?.error || err.message);
         return false;
       }
     }
-    // Offline
-    console.warn('[Member] addMember: offline, adding locally');
+    logWarn('Member', 'addMember: offline, adding locally');
     updateLocalTrip(tripId, t => ({
       ...t,
       members: [...t.members, { id: uid(), name: phone, phone, role: 'member', initials: phone.slice(-2) }],
@@ -500,14 +628,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeMember = async (tripId: string, memberId: string) => {
+    const trip = trips.find(t => t.id === tripId);
+    const member = trip?.members.find(m => m.id === memberId);
+    if (member?.role === 'leader') {
+      logWarn('Member', 'removeMember: cannot remove leader');
+      throw new Error('Không thể xóa trưởng nhóm');
+    }
+    logAction('Member', `removeMember: ${memberId} from trip ${tripId}`);
     updateLocalTrip(tripId, t => ({ ...t, members: t.members.filter(m => m.id !== memberId) }));
     if (isOnline) {
       try { await api.members.remove(tripId, memberId); }
-      catch (err: any) { console.error('[Member] removeMember error:', err.message); }
+      catch (err: any) { logError('Member', 'removeMember error', err.message); }
     }
   };
 
   const promoteMember = async (tripId: string, memberId: string) => {
+    logAction('Member', `promoteMember: ${memberId} in trip ${tripId}`);
     updateLocalTrip(tripId, t => ({
       ...t,
       members: t.members.map(m => ({
@@ -517,7 +653,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
     if (isOnline) {
       try { await api.members.promote(tripId, memberId); }
-      catch (err: any) { console.error('[Member] promoteMember error:', err.message); }
+      catch (err: any) { logError('Member', 'promoteMember error', err.message); }
     }
   };
 
@@ -528,6 +664,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user, trips, loading, isOnline,
       signIn, signUp, signOut, updateUser, changePassword, refreshTrips,
       getTrip, createTrip, deleteTrip, joinTrip,
+      findUser,
       addActivity, updateActivity, deleteActivity,
       addChecklistItem, updateChecklistItem, deleteChecklistItem,
       addExpense, updateExpense, deleteExpense,
