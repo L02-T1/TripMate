@@ -97,7 +97,7 @@ export default function ProfileTab() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings/index' as any)}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings')}>
           <Ionicons name="settings-outline" size={22} color="#6B7280" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Cá nhân</Text>
@@ -119,7 +119,7 @@ export default function ProfileTab() {
         <View style={styles.divider} />
         <MenuItem icon="time-outline"     label="Lịch sử chuyến đi"           onPress={() => router.push('/profile/history' as any)} />
         <View style={styles.divider} />
-        <MenuItem icon="settings-outline" label="Cài đặt"                     onPress={() => router.push('/settings/index'  as any)} />
+        <MenuItem icon="settings-outline" label="Cài đặt"                     onPress={() => router.push('/settings'  as any)} />
         <View style={styles.divider} />
         <MenuItem
           icon={signingOut ? 'reload-outline' : 'log-out-outline'}

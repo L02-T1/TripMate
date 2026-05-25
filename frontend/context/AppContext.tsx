@@ -22,7 +22,14 @@ interface AppContextType {
   signUp:  (email: string, username: string, phone: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
-  changePassword: (current: string, newPwd: string) => Promise<boolean>;
+  changePassword: (
+  current: string,
+  newPwd: string
+) => Promise<{
+  success: boolean;
+  message: string;
+}>;
+  deleteAccount: () => Promise<boolean>;
   refreshTrips: () => Promise<void>;
   getTrip: (id: string) => Trip | undefined;
   createTrip: (data: { name: string; startDate: string; endDate: string; description: string; destinations: string[]; memberPhones: string[] }) => Promise<Trip>;
@@ -287,29 +294,126 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const changePassword = async (current: string, newPwd: string): Promise<boolean> => {
-    if (!current || !newPwd) {
-      logWarn('Auth', 'changePassword: missing fields');
+  const changePassword = async (
+  current: string,
+  newPwd: string
+): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  if (!current || !newPwd) {
+    logWarn(
+      'Auth',
+      'changePassword: missing fields'
+    );
+
+    return {
+      success: false,
+      message: 'Vui lòng nhập đầy đủ thông tin',
+    };
+  }
+
+  if (newPwd.length < 6) {
+    logWarn(
+      'Auth',
+      'changePassword: new password too short'
+    );
+
+    return {
+      success: false,
+      message:
+        'Mật khẩu mới phải có ít nhất 6 ký tự',
+    };
+  }
+
+  if (current === newPwd) {
+    logWarn(
+      'Auth',
+      'changePassword: new password same as current'
+    );
+
+    return {
+      success: false,
+      message:
+        'Mật khẩu mới không được trùng mật khẩu cũ',
+    };
+  }
+
+  try {
+    console.log('Changing password...');
+
+    await api.auth.changePassword(
+      current,
+      newPwd
+    );
+
+    analytics.track('change_password');
+
+    logInfo(
+      'Auth',
+      'Password changed successfully'
+    );
+
+    return {
+      success: true,
+      message: 'Đổi mật khẩu thành công',
+    };
+  } catch (err: any) {
+    logError(
+      'Auth',
+      'changePassword error',
+      err?.data?.error || err.message
+    );
+
+    return {
+      success: false,
+      message:
+        err?.response?.data?.message ||
+        'Mật khẩu hiện tại không đúng',
+    };
+  }
+};
+
+const deleteAccount = async (): Promise<boolean> => {
+  try {
+    if (!user) {
+      logWarn(
+        'Auth',
+        'deleteAccount: no user'
+      );
+
       return false;
     }
-    if (newPwd.length < 6) {
-      logWarn('Auth', 'changePassword: new password too short');
-      return false;
+
+    console.log(
+      'Deleting account:',
+      user.id
+    );
+
+    if (isOnline) {
+      await api.users.delete(user.id);
     }
-    if (current === newPwd) {
-      logWarn('Auth', 'changePassword: new password same as current');
-      return false;
-    }
-    try {
-      await api.auth.changePassword(current, newPwd);
-      analytics.track('change_password');
-      logInfo('Auth', 'Password changed successfully');
-      return true;
-    } catch (err: any) {
-      logError('Auth', 'changePassword error', err?.data?.error || err.message);
-      return false;
-    }
-  };
+
+    await signOut();
+
+    analytics.track('delete_account');
+
+    logInfo(
+      'Auth',
+      'Account deleted successfully'
+    );
+
+    return true;
+  } catch (err: any) {
+    logError(
+      'Auth',
+      'deleteAccount error',
+      err?.response?.data || err.message
+    );
+
+    return false;
+  }
+};
 
 
   // ── Update trip ───────────────────────────────────────────────────────────────
@@ -707,7 +811,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       user, trips, loading, isOnline,
-      signIn, signUp, signOut, updateUser, changePassword, refreshTrips,
+      signIn, signUp, signOut, deleteAccount, updateUser, changePassword, refreshTrips,
       getTrip, createTrip, deleteTrip, joinTrip,
       findUser, updateTrip,
       addActivity, updateActivity, deleteActivity,

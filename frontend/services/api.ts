@@ -174,11 +174,32 @@ const members = {
 };
 
 const users = {
-  findByPhone: (phone: string) => get<any>(`/users/search?phone=${encodeURIComponent(phone)}`),
-  findByEmail: (email: string) => get<any>(`/users/search?email=${encodeURIComponent(email)}`),
-  search: (query: string) => get<any[]>(`/users/search?q=${encodeURIComponent(query)}`),
-};
+  findByPhone: (phone: string) =>
+    get<any>(
+      `/users/search?phone=${encodeURIComponent(
+        phone
+      )}`
+    ),
 
+  findByEmail: (email: string) =>
+    get<any>(
+      `/users/search?email=${encodeURIComponent(
+        email
+      )}`
+    ),
+
+  search: (query: string) =>
+    get<any[]>(
+      `/users/search?q=${encodeURIComponent(
+        query
+      )}`
+    ),
+
+  delete: (id: string) =>
+    del<{ message: string }>(
+      `/users/${id}`
+    ),
+};
 // ─── Default export ───────────────────────────────────────────────────────────
 
 const api = { auth, trips, activities, checklist, expenses, members, users };

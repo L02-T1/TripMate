@@ -43,7 +43,7 @@ export default function ProfileScreen() {
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.title}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push('/settings/index' as any)} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.push('/settings')} style={styles.backBtn}>
           <Ionicons name="settings-outline" size={22} color="#6B7280" />
         </TouchableOpacity>
       </View>
@@ -106,7 +106,7 @@ export default function ProfileScreen() {
           <View style={styles.divider} />
           <MenuItem icon="time-outline" label="Lịch sử chuyến đi" onPress={() => router.push('/profile/history')} />
           <View style={styles.divider} />
-          <MenuItem icon="settings-outline" label="Cài đặt" onPress={() => router.push('/settings/index' as any)} />
+          <MenuItem icon="settings-outline" label="Cài đặt" onPress={() => router.push('/settings')} />
           <View style={styles.divider} />
           <MenuItem icon="log-out-outline" label="Đăng xuất" onPress={handleSignOut} danger />
         </View>
