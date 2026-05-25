@@ -343,7 +343,7 @@ describe('Trip Checklist', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Mua vé cáp treo', category: 'shared' });
     expect(add.status).toBe(201);
-    const itemId = add.body.id;
+    const itemId = add.body._id;
 
     const update = await request(app)
       .patch(`/trips/${tripId}/checklist/${itemId}`)

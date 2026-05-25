@@ -45,9 +45,13 @@
       "typedRoutes": true
     },
     "extra": {
+      "router": {
+        "origin": false
+      },
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "d421127b-f519-4c32-bef7-899d6f163acd"
       }
-    }
+    },
+    "owner": "inowsuke"
   }
 }
