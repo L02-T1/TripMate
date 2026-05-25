@@ -4,14 +4,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Alert, FlatList, Image, Modal, ScrollView,
-  Share, StyleSheet, Text, TouchableOpacity, View,
+  Share, StyleSheet, Text, TextInput,
+  TouchableOpacity, View, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
 import { Activity, ChecklistItem, Expense, Member } from '../../types';
+import { logAction, logWarn } from '../../utils/logger';
 
 const TABS = ['Kế hoạch', 'Checklist', 'Chi phí', 'Nhóm'];
-
 const CATEGORY_COLORS: Record<string, string> = {
   'Ăn uống': '#EF4444', 'Di chuyển': '#3B82F6', 'Chỗ ở': '#8B5CF6',
   'Vui chơi': '#F59E0B', 'Mua sắm': '#10B981', 'Khác': '#6B7280',
@@ -25,29 +26,32 @@ const ACT_TYPE_COLOR: Record<string, string> = {
   'Di chuyển': '#F59E0B', 'Mua sắm': '#10B981', 'Vui chơi': '#F97316',
 };
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  UPCOMING: { label: 'SẮP TỚI',   color: '#F59E0B', bg: '#FEF3C7' },
-  ONGOING:  { label: 'ĐANG ĐI',   color: '#3B82F6', bg: '#EFF6FF' },
+  UPCOMING: { label: 'SẮP TỚI',    color: '#F59E0B', bg: '#FEF3C7' },
+  ONGOING:  { label: 'ĐANG ĐI',    color: '#3B82F6', bg: '#EFF6FF' },
   DONE:     { label: 'HOÀN THÀNH', color: '#10B981', bg: '#ECFDF5' },
 };
 
 function fmtMoney(n: number) { return Math.abs(n).toLocaleString('vi-VN') + ' đ'; }
+function formatDateInput(raw: string) {
+  const d = raw.replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0,2)}/${d.slice(2)}`;
+  return `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`;
+}
 
 /* ──────────────────── PLAN TAB ──────────────────── */
 function PlanTab({ tripId }: { tripId: string }) {
   const router = useRouter();
   const { getTrip, deleteActivity } = useApp();
   const trip = getTrip(tripId)!;
-
-  const sorted = [...trip.activities].sort((a, b) => {
-    const da = a.date.split('/').reverse().join('') + a.time;
+  const sorted = [...trip.activities].sort((a: Activity, b: Activity) => {
+    const da: string = a.date.split('/').reverse().join('') + a.time;
     const db = b.date.split('/').reverse().join('') + b.time;
     return da.localeCompare(db);
   });
-
   const grouped: Record<string, Activity[]> = {};
   sorted.forEach(a => { (grouped[a.date] = grouped[a.date] || []).push(a); });
   const dates = Object.keys(grouped);
-
   if (!dates.length) return (
     <View style={s.emptyFull}>
       <View style={s.emptyIcon}><Ionicons name="calendar-outline" size={40} color="#9CA3AF" /></View>
@@ -55,7 +59,6 @@ function PlanTab({ tripId }: { tripId: string }) {
       <Text style={s.emptySub}>Nhấn + để thêm hoạt động đầu tiên</Text>
     </View>
   );
-
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
       {dates.map(date => (
@@ -71,7 +74,7 @@ function PlanTab({ tripId }: { tripId: string }) {
               onPress={() => router.push({ pathname: '/activity/[id]', params: { id: act.id, tripId, type: 'activity' } })}
               onLongPress={() => Alert.alert('Hoạt động', act.name, [
                 { text: 'Sửa', onPress: () => router.push({ pathname: '/activity/[id]', params: { id: act.id, tripId, type: 'activity' } }) },
-                { text: 'Xóa', style: 'destructive', onPress: () => deleteActivity(tripId, act.id) },
+                { text: 'Xóa', style: 'destructive', onPress: () => { logAction('Activity', `delete ${act.id}`); deleteActivity(tripId, act.id); } },
                 { text: 'Hủy', style: 'cancel' },
               ])}
             >
@@ -100,7 +103,7 @@ function PlanTab({ tripId }: { tripId: string }) {
                     </View>
                   )}
                 </View>
-                {act.note ? <Text style={s.actNote} numberOfLines={2}>{act.note}</Text> : null}
+                {act.note ? <Text style={s.actNote} numberOfLines={1}>{act.note}</Text> : null}
               </View>
             </TouchableOpacity>
           ))}
@@ -112,84 +115,126 @@ function PlanTab({ tripId }: { tripId: string }) {
 
 /* ──────────────────── CHECKLIST TAB ──────────────────── */
 function ChecklistTab({ tripId }: { tripId: string }) {
-  const { getTrip, updateChecklistItem, deleteChecklistItem } = useApp();
   const router = useRouter();
+  const { getTrip, updateChecklistItem, deleteChecklistItem } = useApp();
   const trip = getTrip(tripId)!;
-  const [filter, setFilter] = useState<'all'|'shared'|'personal'|'todo'>('all');
-
-  const all = trip.checklist;
-  const items = filter === 'all' ? all : all.filter(c => c.category === filter);
-  const done = all.filter(c => c.completed).length;
-  const pct  = all.length ? Math.round(done / all.length * 100) : 0;
-
-  const FILTERS = [
-    { key: 'all',      label: `Tất cả (${all.length})` },
-    { key: 'shared',   label: '🎒 Đồ chung' },
-    { key: 'personal', label: '👤 Cá nhân' },
-    { key: 'todo',     label: '✅ Việc làm' },
-  ];
-
+  const [filter, setFilter] = useState<'all' | 'shared' | 'personal' | 'todo'>('all');
+  const CAT_COLORS: Record<string, { bg: string; text: string }> = {
+    shared: { bg: '#EFF6FF', text: '#1B4F8A' },
+    personal: { bg: '#FEF3C7', text: '#92400E' },
+    todo: { bg: '#F0FDF4', text: '#166534' },
+  };
+  const filtered = filter === 'all' ? trip.checklist : trip.checklist.filter(c => c.category === filter);
+  const done = trip.checklist.filter(c => c.completed).length;
+  const pct = trip.checklist.length ? Math.round(done / trip.checklist.length * 100) : 0;
   return (
     <View style={{ flex: 1 }}>
       <View style={s.clTopBar}>
         <View style={s.clProgressRow}>
-          <Text style={s.clProgressLabel}>
-            Hoàn thành <Text style={{ color: '#1B4F8A', fontWeight: '700' }}>{done}/{all.length}</Text>
-          </Text>
+          <Text style={s.clProgressLabel}>Tiến độ</Text>
           <Text style={s.clPct}>{pct}%</Text>
         </View>
         <View style={s.clBarBg}><View style={[s.clBarFill, { width: `${pct}%` as any }]} /></View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 2 }}>
-            {FILTERS.map(f => (
-              <TouchableOpacity key={f.key}
-                style={[s.filterChip, filter === f.key && s.filterChipActive]}
-                onPress={() => setFilter(f.key as any)}>
-                <Text style={[s.filterChipText, filter === f.key && s.filterChipTextActive]}>{f.label}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(['all', 'shared', 'personal', 'todo'] as const).map(f => (
+              <TouchableOpacity key={f} style={[s.filterChip, filter === f && s.filterChipActive]} onPress={() => setFilter(f)}>
+                <Text style={[s.filterChipText, filter === f && s.filterChipTextActive]}>
+                  {f === 'all' ? 'Tất cả' : f === 'shared' ? 'Nhóm' : f === 'personal' ? 'Cá nhân' : 'Việc cần làm'}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </ScrollView>
       </View>
       <FlatList
-        data={items} keyExtractor={i => i.id}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100, gap: 8 }}
-        ListEmptyComponent={
-          <View style={s.emptyFull}>
-            <Ionicons name="checkmark-circle-outline" size={40} color="#D1D5DB" />
-            <Text style={s.emptyTitle}>Không có mục nào</Text>
-          </View>
-        }
-        renderItem={({ item }: { item: ChecklistItem }) => (
-          <TouchableOpacity
-            style={[s.clItem, item.completed && s.clItemDone]}
-            onPress={() => router.push({ pathname: '/activity/[id]', params: { id: item.id, tripId, type: 'checklist' } })}
-            onLongPress={() => Alert.alert(item.name, 'Chọn hành động', [
-              { text: 'Xóa mục', style: 'destructive', onPress: () => deleteChecklistItem(tripId, item.id) },
+        data={filtered} keyExtractor={c => c.id}
+        contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 100 }}
+        ListEmptyComponent={<View style={s.emptyFull}><Ionicons name="checkbox-outline" size={40} color="#D1D5DB" /><Text style={s.emptyTitle}>Chưa có mục nào</Text></View>}
+        renderItem={({ item }: { item: ChecklistItem }) => {
+          const catColor = CAT_COLORS[item.category] || CAT_COLORS.shared;
+          return (
+            <TouchableOpacity style={[s.clItem, item.completed && s.clItemDone]}
+              onPress={() => router.push({ pathname: '/activity/[id]', params: { id: item.id, tripId, type: 'checklist' } })}
+              onLongPress={() => Alert.alert(item.name, '', [
+                { text: 'Sửa', onPress: () => router.push({ pathname: '/activity/[id]', params: { id: item.id, tripId, type: 'checklist' } }) },
+                { text: 'Xóa', style: 'destructive', onPress: () => deleteChecklistItem(tripId, item.id) },
+                { text: 'Hủy', style: 'cancel' },
+              ])}
+            >
+              <TouchableOpacity style={[s.clCheck, item.completed && s.clCheckDone]}
+                onPress={() => updateChecklistItem(tripId, item.id, { completed: !item.completed })}>
+                {item.completed && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.clName, item.completed && s.clNameDone]}>{item.name}</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 3, alignItems: 'center' }}>
+                  {item.assignee ? <Text style={s.clMetaText}>👤 {item.assignee}</Text> : null}
+                  {item.dueDate  ? <Text style={s.clMetaText}>📅 {item.dueDate}</Text>   : null}
+                </View>
+              </View>
+              <View style={[s.clCatBadge, { backgroundColor: catColor.bg }]}>
+                <Text style={[s.clCatText, { color: catColor.text }]}>
+                  {item.category === 'shared' ? 'Nhóm' : item.category === 'personal' ? 'Cá nhân' : 'Việc làm'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
+    </View>
+  );
+}
+
+/* ──────────────────── EXPENSES TAB ──────────────────── */
+function ExpensesTab({ tripId }: { tripId: string }) {
+  const router = useRouter();
+  const { getTrip, deleteExpense } = useApp();
+  const trip = getTrip(tripId)!;
+  const total = trip.expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+  const perPerson = trip.members.length > 0 ? total / trip.members.length : 0;
+  const byCategory: Record<string, number> = {};
+  trip.expenses.forEach((e: Expense) => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount; });
+  const topCat = Object.entries(byCategory).sort((a: [string, number], b: [string, number]) => b[1] - a[1])[0];
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={s.expTopBar}>
+        <View style={s.expSummary}>
+          <View style={s.expSummaryItem}><Text style={s.expSummaryVal}>{fmtMoney(total)}</Text><Text style={s.expSummaryLabel}>Tổng chi</Text></View>
+          <View style={s.expSummaryDivider} />
+          <View style={s.expSummaryItem}><Text style={s.expSummaryVal}>{fmtMoney(Math.round(perPerson))}</Text><Text style={s.expSummaryLabel}>Mỗi người</Text></View>
+          <View style={s.expSummaryDivider} />
+          <View style={s.expSummaryItem}><Text style={s.expSummaryVal}>{topCat ? topCat[0] : '—'}</Text><Text style={s.expSummaryLabel}>Nhiều nhất</Text></View>
+        </View>
+        <TouchableOpacity style={s.reportBtn} onPress={() => router.push({ pathname: '/trip/report', params: { tripId } })}>
+          <Ionicons name="bar-chart-outline" size={18} color="#1B4F8A" />
+          <Text style={s.reportBtnText}>Xem báo cáo quyết toán</Text>
+          <Ionicons name="chevron-forward" size={16} color="#1B4F8A" />
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        data={trip.expenses} keyExtractor={e => e.id}
+        contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 100 }}
+        ListEmptyComponent={<View style={s.emptyFull}><Ionicons name="wallet-outline" size={40} color="#D1D5DB" /><Text style={s.emptyTitle}>Chưa có chi phí</Text></View>}
+        renderItem={({ item }: { item: Expense }) => (
+          <TouchableOpacity style={s.expCard}
+            onPress={() => router.push({ pathname: '/activity/[id]', params: { id: item.id, tripId, type: 'expense' } })}
+            onLongPress={() => Alert.alert(item.name, fmtMoney(item.amount), [
+              { text: 'Sửa', onPress: () => router.push({ pathname: '/activity/[id]', params: { id: item.id, tripId, type: 'expense' } }) },
+              { text: 'Xóa', style: 'destructive', onPress: () => deleteExpense(tripId, item.id) },
               { text: 'Hủy', style: 'cancel' },
             ])}
           >
-            <TouchableOpacity
-              style={[s.clCheck, item.completed && s.clCheckDone]}
-              onPress={() => updateChecklistItem(tripId, item.id, { completed: !item.completed })}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              {item.completed && <Ionicons name="checkmark" size={14} color="#fff" />}
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.clName, item.completed && s.clNameDone]}>{item.name}</Text>
-              <View style={{ flexDirection: 'row', gap: 4, marginTop: 2 }}>
-                {item.assignee ? <Text style={s.clMetaText}>{item.assignee}</Text> : null}
-                {item.dueDate  ? <Text style={s.clMetaText}>· {item.dueDate}</Text>  : null}
-              </View>
+            <View style={[s.expIconWrap, { backgroundColor: (CATEGORY_COLORS[item.category] || '#6B7280') + '18' }]}>
+              <Ionicons name={CATEGORY_ICONS[item.category] || 'pricetag'} size={20} color={CATEGORY_COLORS[item.category] || '#6B7280'} />
             </View>
-            <View style={[s.clCatBadge, {
-              backgroundColor: item.category === 'shared' ? '#FEE2E2' : item.category === 'personal' ? '#DBEAFE' : '#D1FAE5',
-            }]}>
-              <Text style={[s.clCatText, {
-                color: item.category === 'shared' ? '#DC2626' : item.category === 'personal' ? '#2563EB' : '#059669',
-              }]}>
-                {item.category === 'shared' ? 'Chung' : item.category === 'personal' ? 'Cá nhân' : 'Việc làm'}
-              </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.expName}>{item.name}</Text>
+              <Text style={s.expMeta}>{item.paidBy} · {item.splitType === 'equal' ? `Chia đều ${item.participants?.length || trip.members.length} người` : 'Chi tiết'}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.expAmt}>-{fmtMoney(item.amount)}</Text>
+              <Text style={s.expPerPerson}>{fmtMoney(Math.round(item.amount / Math.max(1, item.participants?.length || trip.members.length)))}/người</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -198,92 +243,20 @@ function ChecklistTab({ tripId }: { tripId: string }) {
   );
 }
 
-/* ──────────────────── EXPENSES TAB ──────────────────── */
-function ExpensesTab({ tripId }: { tripId: string }) {
-  const { getTrip, deleteExpense } = useApp();
-  const router = useRouter();
-  const trip = getTrip(tripId)!;
-  const total     = trip.expenses.reduce((s, e) => s + e.amount, 0);
-  const perPerson = trip.members.length > 0 ? total / trip.members.length : 0;
-
-  const grouped: Record<string, Expense[]> = {};
-  [...trip.expenses].sort((a, b) => b.date.localeCompare(a.date))
-    .forEach(e => { (grouped[e.date] = grouped[e.date] || []).push(e); });
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={s.expTopBar}>
-        <TouchableOpacity style={s.reportBtn}
-          onPress={() => router.push({ pathname: '/trip/report', params: { tripId } })}>
-          <Ionicons name="bar-chart-outline" size={16} color="#1B4F8A" />
-          <Text style={s.reportBtnText}>Xem tổng kết & chia tiền</Text>
-          <Ionicons name="chevron-forward" size={14} color="#1B4F8A" />
-        </TouchableOpacity>
-        <View style={s.expSummary}>
-          <View style={s.expSummaryItem}>
-            <Text style={s.expSummaryVal}>{fmtMoney(total)}</Text>
-            <Text style={s.expSummaryLabel}>Tổng chi phí</Text>
-          </View>
-          <View style={s.expSummaryDivider} />
-          <View style={s.expSummaryItem}>
-            <Text style={s.expSummaryVal}>{fmtMoney(Math.round(perPerson))}</Text>
-            <Text style={s.expSummaryLabel}>Mỗi người</Text>
-          </View>
-          <View style={s.expSummaryDivider} />
-          <View style={s.expSummaryItem}>
-            <Text style={s.expSummaryVal}>{trip.expenses.length}</Text>
-            <Text style={s.expSummaryLabel}>Khoản chi</Text>
-          </View>
-        </View>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-        {trip.expenses.length === 0 ? (
-          <View style={s.emptyFull}>
-            <Ionicons name="wallet-outline" size={40} color="#D1D5DB" />
-            <Text style={s.emptyTitle}>Chưa có khoản chi nào</Text>
-            <Text style={s.emptySub}>Nhấn + để thêm chi phí</Text>
-          </View>
-        ) : Object.entries(grouped).map(([date, exps]) => (
-          <View key={date} style={{ marginBottom: 12 }}>
-            <View style={s.dateBadge}>
-              <Ionicons name="calendar-outline" size={13} color="#6B7280" />
-              <Text style={s.dateHeader}>{date}</Text>
-            </View>
-            {exps.map((item, i) => (
-              <TouchableOpacity key={item.id}
-                style={[s.expCard, i > 0 && { marginTop: 8 }]}
-                onPress={() => router.push({ pathname: '/activity/[id]', params: { id: item.id, tripId, type: 'expense' } })}
-                onLongPress={() => Alert.alert(item.name, fmtMoney(item.amount), [
-                  { text: 'Xóa', style: 'destructive', onPress: () => deleteExpense(tripId, item.id) },
-                  { text: 'Hủy', style: 'cancel' },
-                ])}>
-                <View style={[s.expIconWrap, { backgroundColor: (CATEGORY_COLORS[item.category] || '#6B7280') + '18' }]}>
-                  <Ionicons name={CATEGORY_ICONS[item.category] || 'pricetag'} size={20} color={CATEGORY_COLORS[item.category] || '#6B7280'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.expName}>{item.name}</Text>
-                  <Text style={s.expMeta}>{item.paidBy} · {item.splitType === 'equal' ? `Chia đều ${item.participants?.length || trip.members.length} người` : 'Chi tiết'}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={s.expAmt}>-{fmtMoney(item.amount)}</Text>
-                  <Text style={s.expPerPerson}>{fmtMoney(Math.round(item.amount / Math.max(1, item.participants?.length || trip.members.length)))}/người</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
 /* ──────────────────── MEMBERS TAB ──────────────────── */
 function MembersTab({ tripId }: { tripId: string }) {
-  const { getTrip, removeMember, promoteMember } = useApp();
+  const appCtx = useApp() as any;
+  const { getTrip, removeMember, promoteMember, addMember } = appCtx;
+  const findUser: ((q: string) => Promise<any>) | undefined = appCtx.findUser;
   const router = useRouter();
   const trip = getTrip(tripId)!;
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [foundUser, setFoundUser] = useState<any>(null);
+  const [searching, setSearching] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const inviteCode = (trip as any).inviteCode || tripId.slice(-6).toUpperCase();
   const inviteLink = `tripmate.app/join/${inviteCode}`;
@@ -294,9 +267,66 @@ function MembersTab({ tripId }: { tripId: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   const handleShare = async () => {
-    await Share.share({
-      message: `Tham gia chuyến đi "${trip.name}" cùng tôi trên TripMate!\nMã mời: ${inviteCode}\nLink: ${inviteLink}`,
-    });
+    await Share.share({ message: `Tham gia chuyến đi "${trip.name}" cùng tôi trên TripMate!\nMã mời: ${inviteCode}\nLink: ${inviteLink}` });
+  };
+
+  const handleSearchUser = async () => {
+    const q = searchQuery.trim();
+    if (!q) { Alert.alert('', 'Vui lòng nhập số điện thoại hoặc email'); return; }
+    setSearching(true);
+    setFoundUser(null);
+    setNotFound(false);
+    logAction('Member', `Search user: ${q}`);
+    try {
+      const result = findUser ? await findUser(q) : null;
+      if (result) { setFoundUser(result); }
+      else { setNotFound(true); }
+    } catch { setNotFound(true); }
+    finally { setSearching(false); }
+  };
+
+  const handleAddMember = async (phone: string, name?: string) => {
+    if (trip.members.find((m: Member) => m.phone === phone)) {
+      Alert.alert('', `${name || phone} đã là thành viên của chuyến đi này`);
+      return;
+    }
+    logAction('Member', `Add to trip: ${phone}`);
+    const ok = await addMember(tripId, phone);
+    if (ok) {
+      Alert.alert('✅ Thành công', `Đã thêm ${name || phone} vào chuyến đi`);
+      setShowAddModal(false);
+      setSearchQuery('');
+      setFoundUser(null);
+      setNotFound(false);
+    } else {
+      Alert.alert('Lỗi', 'Không thể thêm thành viên. Thử lại sau.');
+    }
+  };
+
+  const handleRemoveMember = (member: Member) => {
+    if (member.role === 'leader') {
+      Alert.alert('Không thể xóa', 'Không thể xóa trưởng nhóm. Hãy chuyển quyền trước.');
+      return;
+    }
+    Alert.alert(
+      'Xóa thành viên',
+      `Xóa ${member.name} khỏi chuyến đi "${trip.name}"?\nHành động này không thể hoàn tác.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa', style: 'destructive', onPress: async () => {
+            logAction('Member', `Remove ${member.id} from trip ${tripId}`);
+            try {
+              await removeMember(tripId, member.id);
+              setSelectedMember(null);
+              Alert.alert('✅', `Đã xóa ${member.name} khỏi nhóm`);
+            } catch (err: any) {
+              Alert.alert('Lỗi', err.message || 'Không thể xóa thành viên');
+            }
+          }
+        },
+      ]
+    );
   };
 
   return (
@@ -328,8 +358,7 @@ function MembersTab({ tripId }: { tripId: string }) {
           <Text style={s.membersTripName}>{trip.name}</Text>
           <Text style={s.membersMeta}>{trip.members.length} thành viên · {trip.startDate} – {trip.endDate}</Text>
         </View>
-        <TouchableOpacity style={s.addMemberBtn}
-          onPress={() => router.push({ pathname: '/activity/[id]', params: { id: 'new', tripId, type: 'member' } })}>
+        <TouchableOpacity style={s.addMemberBtn} onPress={() => setShowAddModal(true)}>
           <Ionicons name="person-add-outline" size={16} color="#1B4F8A" />
           <Text style={s.addMemberTxt}>Thêm</Text>
         </TouchableOpacity>
@@ -338,20 +367,15 @@ function MembersTab({ tripId }: { tripId: string }) {
       <FlatList
         data={trip.members} keyExtractor={m => m.id}
         contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 100 }}
-        ListEmptyComponent={
-          <View style={s.emptyFull}>
-            <Ionicons name="people-outline" size={40} color="#D1D5DB" />
-            <Text style={s.emptyTitle}>Chưa có thành viên</Text>
-          </View>
-        }
+        ListEmptyComponent={<View style={s.emptyFull}><Ionicons name="people-outline" size={40} color="#D1D5DB" /><Text style={s.emptyTitle}>Chưa có thành viên</Text></View>}
         renderItem={({ item }: { item: Member }) => {
           const paid = trip.expenses
-            .filter(e => e.paidBy === item.name.split(' ')[0] || (e as any).paidById === item.id)
-            .reduce((sum, e) => sum + e.amount, 0);
+            .filter((e: Expense) => e.paidBy === item.name.split(' ')[0] || (e as any).paidById === item.id)
+            .reduce((sum: number, e: Expense) => sum + e.amount, 0);
           return (
             <TouchableOpacity style={s.memberCard} onPress={() => setSelectedMember(item)} activeOpacity={0.8}>
               <View style={[s.memberAvatar, item.role === 'leader' && s.memberAvatarLeader]}>
-                <Text style={s.memberAvatarText}>{item.initials.slice(0, 1)}</Text>
+                <Text style={s.memberAvatarText}>{item.initials?.slice(0,1) || item.name[0]}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
@@ -374,7 +398,7 @@ function MembersTab({ tripId }: { tripId: string }) {
         }}
       />
 
-      {/* Action sheet */}
+      {/* Member action sheet */}
       <Modal visible={!!selectedMember} transparent animationType="slide" onRequestClose={() => setSelectedMember(null)}>
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setSelectedMember(null)}>
           <View style={s.actionSheet}>
@@ -382,7 +406,7 @@ function MembersTab({ tripId }: { tripId: string }) {
               <>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingBottom: 16 }}>
                   <View style={[s.memberAvatar, selectedMember.role === 'leader' && s.memberAvatarLeader]}>
-                    <Text style={s.memberAvatarText}>{selectedMember.initials.slice(0, 1)}</Text>
+                    <Text style={s.memberAvatarText}>{selectedMember.initials?.slice(0,1) || selectedMember.name[0]}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 17, fontWeight: '700', color: '#111' }}>{selectedMember.name}</Text>
@@ -403,15 +427,12 @@ function MembersTab({ tripId }: { tripId: string }) {
                   <View style={[s.sheetIcon, { backgroundColor: '#F0F9FF' }]}><Ionicons name="share-social-outline" size={18} color="#0284C7" /></View>
                   <Text style={s.sheetLabel}>Gửi link mời</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.sheetItem} onPress={() => {
-                  Alert.alert('Xác nhận', `Xoá ${selectedMember.name} khỏi nhóm?`, [
-                    { text: 'Hủy', style: 'cancel' },
-                    { text: 'Xoá', style: 'destructive', onPress: () => { removeMember(tripId, selectedMember.id); setSelectedMember(null); } },
-                  ]);
-                }}>
-                  <View style={[s.sheetIcon, { backgroundColor: '#FEE2E2' }]}><Ionicons name="person-remove-outline" size={18} color="#EF4444" /></View>
-                  <Text style={[s.sheetLabel, { color: '#EF4444' }]}>Xoá khỏi nhóm</Text>
-                </TouchableOpacity>
+                {selectedMember.role !== 'leader' && (
+                  <TouchableOpacity style={s.sheetItem} onPress={() => handleRemoveMember(selectedMember)}>
+                    <View style={[s.sheetIcon, { backgroundColor: '#FEE2E2' }]}><Ionicons name="person-remove-outline" size={18} color="#EF4444" /></View>
+                    <Text style={[s.sheetLabel, { color: '#EF4444' }]}>Xóa khỏi nhóm</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={s.sheetCancel} onPress={() => setSelectedMember(null)}>
                   <Text style={{ fontSize: 15, color: '#374151', fontWeight: '600' }}>Đóng</Text>
                 </TouchableOpacity>
@@ -420,7 +441,187 @@ function MembersTab({ tripId }: { tripId: string }) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Add member modal */}
+      <Modal visible={showAddModal} transparent animationType="slide" onRequestClose={() => setShowAddModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.actionSheet}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#111' }}>👤 Thêm thành viên</Text>
+              <TouchableOpacity onPress={() => { setShowAddModal(false); setSearchQuery(''); setFoundUser(null); setNotFound(false); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color="#374151" />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>Tìm bạn qua số điện thoại hoặc email</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+              <View style={s.searchInputWrap}>
+                <Ionicons name="search-outline" size={16} color="#9CA3AF" />
+                <TextInput
+                  style={s.searchInput}
+                  placeholder="0912 345 678 hoặc email@..."
+                  placeholderTextColor="#C0C8D0"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="none"
+                  keyboardType="default"
+                  returnKeyType="search"
+                  onSubmitEditing={handleSearchUser}
+                  autoFocus
+                />
+              </View>
+              <TouchableOpacity style={s.searchBtn} onPress={handleSearchUser} disabled={searching}>
+                {searching ? <ActivityIndicator size="small" color="#fff" /> : <Text style={s.searchBtnText}>Tìm</Text>}
+              </TouchableOpacity>
+            </View>
+
+            {/* Found user */}
+            {foundUser && (
+              <View style={s.foundCard}>
+                <View style={s.memberAvatar}>
+                  <Text style={s.memberAvatarText}>{(foundUser.username || foundUser.name || '?')[0].toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#111' }}>{foundUser.username || foundUser.name}</Text>
+                  <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{foundUser.phone || foundUser.email}</Text>
+                </View>
+                <TouchableOpacity style={s.inviteBtn} onPress={() => handleAddMember(foundUser.phone || searchQuery, foundUser.username)}>
+                  <Ionicons name="person-add" size={16} color="#fff" />
+                  <Text style={s.inviteBtnText}>Mời vào</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Not found — allow manual add */}
+            {notFound && (
+              <View style={s.notFoundBox}>
+                <Ionicons name="information-circle-outline" size={20} color="#F59E0B" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, color: '#92400E', fontWeight: '600' }}>Không tìm thấy tài khoản</Text>
+                  <Text style={{ fontSize: 12, color: '#B45309', marginTop: 2 }}>Bạn vẫn có thể mời qua số điện thoại</Text>
+                </View>
+                <TouchableOpacity style={[s.inviteBtn, { backgroundColor: '#F59E0B' }]} onPress={() => handleAddMember(searchQuery.trim())}>
+                  <Text style={s.inviteBtnText}>Thêm</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <TouchableOpacity style={s.sheetCancel} onPress={() => { setShowAddModal(false); setSearchQuery(''); setFoundUser(null); setNotFound(false); }}>
+              <Text style={{ fontSize: 15, color: '#374151', fontWeight: '600' }}>Đóng</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
+  );
+}
+
+/* ──────────────────── EDIT TRIP MODAL ──────────────────── */
+function EditTripModal({ trip, visible, onClose }: { trip: any; visible: boolean; onClose: () => void }) {
+  const { updateTrip } = useApp() as any;
+  const [form, setForm] = useState({ name: trip.name, startDate: trip.startDate, endDate: trip.endDate, description: trip.description || '', destinations: trip.destinations || [] as string[] });
+  const [destInput, setDestInput] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const addDest = (d: string) => {
+    const t = d.trim();
+    if (!t || form.destinations.includes(t)) return;
+    setForm(p => ({ ...p, destinations: [...p.destinations, t] }));
+    setDestInput('');
+  };
+  const removeDest = (d: string) => setForm(p => ({ ...p, destinations: p.destinations.filter((x: string) => x !== d) }));
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { Alert.alert('', 'Tên chuyến đi không được trống'); return; }
+    setSaving(true);
+    logAction('Trip', `Edit trip: ${trip.id}`);
+    try {
+      if (typeof updateTrip === 'function') {
+        await updateTrip(trip.id, form);
+      }
+      onClose();
+    } catch (err: any) {
+      Alert.alert('Lỗi', err.message || 'Không thể cập nhật chuyến đi');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+        <View style={s.editHeader}>
+          <TouchableOpacity onPress={onClose} style={s.editHeaderBtn}>
+            <Ionicons name="close" size={22} color="#374151" />
+          </TouchableOpacity>
+          <Text style={s.editHeaderTitle}>Chỉnh sửa chuyến đi</Text>
+          <TouchableOpacity onPress={handleSave} disabled={saving} style={[s.editHeaderBtn, { backgroundColor: '#1B4F8A' }]}>
+            {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Lưu</Text>}
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 40 }}>
+          {/* Name */}
+          <View>
+            <Text style={s.editLabel}>Tên chuyến đi *</Text>
+            <TextInput style={s.editInput} value={form.name} onChangeText={v => setForm(p => ({ ...p, name: v }))} placeholder="Tên chuyến đi..." placeholderTextColor="#C0C8D0" />
+          </View>
+          {/* Dates */}
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.editLabel}>Ngày bắt đầu</Text>
+              <View style={s.editDateWrap}>
+                <Ionicons name="calendar-outline" size={15} color="#6B7280" />
+                <TextInput style={{ flex: 1, fontSize: 14, color: '#111' }} value={form.startDate}
+                  onChangeText={v => setForm(p => ({ ...p, startDate: formatDateInput(v) }))}
+                  placeholder="DD/MM/YYYY" placeholderTextColor="#C0C8D0" keyboardType="numeric" maxLength={10} />
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.editLabel}>Ngày kết thúc</Text>
+              <View style={s.editDateWrap}>
+                <Ionicons name="calendar-outline" size={15} color="#6B7280" />
+                <TextInput style={{ flex: 1, fontSize: 14, color: '#111' }} value={form.endDate}
+                  onChangeText={v => setForm(p => ({ ...p, endDate: formatDateInput(v) }))}
+                  placeholder="DD/MM/YYYY" placeholderTextColor="#C0C8D0" keyboardType="numeric" maxLength={10} />
+              </View>
+            </View>
+          </View>
+          {/* Description */}
+          <View>
+            <Text style={s.editLabel}>Mô tả</Text>
+            <TextInput style={[s.editInput, { height: 80, textAlignVertical: 'top' }]}
+              value={form.description} onChangeText={v => setForm(p => ({ ...p, description: v }))}
+              placeholder="Mô tả chuyến đi..." placeholderTextColor="#C0C8D0" multiline numberOfLines={3} />
+          </View>
+          {/* Destinations */}
+          <View>
+            <Text style={s.editLabel}>Điểm đến</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+              <View style={[s.editInput, { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 0 }]}>
+                <Ionicons name="location-outline" size={15} color="#9CA3AF" />
+                <TextInput style={{ flex: 1, fontSize: 14, color: '#111', paddingVertical: 12 }}
+                  value={destInput} onChangeText={setDestInput}
+                  placeholder="Thêm địa điểm..." placeholderTextColor="#C0C8D0"
+                  returnKeyType="done" onSubmitEditing={() => addDest(destInput)} />
+              </View>
+              <TouchableOpacity style={s.searchBtn} onPress={() => addDest(destInput)}>
+                <Ionicons name="add" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {form.destinations.map((d: string) => (
+                <View key={d} style={s.destChip}>
+                  <Ionicons name="location" size={13} color="#1B4F8A" />
+                  <Text style={s.destChipText}>{d}</Text>
+                  <TouchableOpacity onPress={() => removeDest(d)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -431,30 +632,42 @@ export default function TripDashboard() {
   const { getTrip, deleteTrip, refreshTrips } = useApp();
   const [tab, setTab] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
 
   const trip = getTrip(id!);
+
+  // ── Fix GO_BACK: use replace when no history ──────────────────────────────
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/trips');
+    }
+  };
 
   if (!trip) return (
     <SafeAreaView style={[s.safe, { justifyContent: 'center', alignItems: 'center' }]}>
       <Ionicons name="alert-circle-outline" size={48} color="#D1D5DB" />
       <Text style={{ fontSize: 16, color: '#6B7280', marginTop: 12 }}>Không tìm thấy chuyến đi</Text>
-      <TouchableOpacity onPress={() => router.back()}
+      <TouchableOpacity onPress={goBack}
         style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#1B4F8A', borderRadius: 12 }}>
         <Text style={{ color: '#fff', fontWeight: '700' }}>Quay lại</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
 
-  const statusCfg  = STATUS_CONFIG[trip.status] || STATUS_CONFIG.UPCOMING;
-  const totalCost  = trip.expenses.reduce((sum, e) => sum + e.amount, 0);
-  const doneCheck  = trip.checklist.filter(c => c.completed).length;
+  const statusCfg = STATUS_CONFIG[trip.status] || STATUS_CONFIG.UPCOMING;
+  const totalCost = trip.expenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
+  const doneCheck = trip.checklist.filter((c: ChecklistItem) => c.completed).length;
 
   const handleFab = () => {
     const types = ['activity', 'checklist', 'expense', 'member'];
+    if (tab === 3) return; // Members tab has its own add button
     router.push({ pathname: '/activity/[id]', params: { id: 'new', tripId: id, type: types[tab] } });
   };
 
   const handleMenu = () => Alert.alert(trip.name, 'Chọn hành động', [
+    { text: '✏️ Chỉnh sửa chuyến đi', onPress: () => setShowEdit(true) },
     { text: '🔄 Làm mới dữ liệu', onPress: async () => { setRefreshing(true); await refreshTrips(); setRefreshing(false); } },
     { text: '🗑 Xóa chuyến đi', style: 'destructive', onPress: () =>
         Alert.alert('Xác nhận xóa', 'Dữ liệu sẽ bị xóa vĩnh viễn. Tiếp tục?', [
@@ -466,18 +679,23 @@ export default function TripDashboard() {
 
   return (
     <View style={s.safe}>
-      {/* ── Hero banner ── */}
+      {/* Hero banner */}
       <View style={s.hero}>
         <Image source={{ uri: trip.image || 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=600&q=80' }}
           style={s.heroImg} resizeMode="cover" />
         <View style={s.heroOverlay} />
         <SafeAreaView style={s.heroTopBar} edges={['top']}>
-          <TouchableOpacity style={s.heroBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={s.heroBtn} onPress={goBack}>
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={s.heroBtn} onPress={handleMenu}>
-            <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={s.heroBtn} onPress={() => setShowEdit(true)}>
+              <Ionicons name="create-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.heroBtn} onPress={handleMenu}>
+              <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
         <View style={s.heroContent}>
           <View style={[s.statusBadge, { backgroundColor: statusCfg.bg }]}>
@@ -513,7 +731,7 @@ export default function TripDashboard() {
         </View>
       </View>
 
-      {/* ── Tab bar ── */}
+      {/* Tab bar */}
       <View style={s.tabBar}>
         {TABS.map((t, i) => (
           <TouchableOpacity key={t} style={[s.tabItem, tab === i && s.tabItemActive]} onPress={() => setTab(i)}>
@@ -527,18 +745,23 @@ export default function TripDashboard() {
         ))}
       </View>
 
-      {/* ── Content ── */}
+      {/* Content */}
       <View style={{ flex: 1 }}>
-        {tab === 0 && <PlanTab       tripId={id!} />}
-        {tab === 1 && <ChecklistTab  tripId={id!} />}
-        {tab === 2 && <ExpensesTab   tripId={id!} />}
-        {tab === 3 && <MembersTab    tripId={id!} />}
+        {tab === 0 && <PlanTab      tripId={id!} />}
+        {tab === 1 && <ChecklistTab tripId={id!} />}
+        {tab === 2 && <ExpensesTab  tripId={id!} />}
+        {tab === 3 && <MembersTab   tripId={id!} />}
       </View>
 
-      {/* ── FAB ── */}
-      <TouchableOpacity style={s.fab} onPress={handleFab}>
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      {/* FAB — hide on members tab */}
+      {tab !== 3 && (
+        <TouchableOpacity style={s.fab} onPress={handleFab}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* Edit Trip Modal */}
+      {showEdit && <EditTripModal trip={trip} visible={showEdit} onClose={() => setShowEdit(false)} />}
     </View>
   );
 }
@@ -652,6 +875,24 @@ const s = StyleSheet.create({
   sheetIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   sheetLabel: { fontSize: 15, color: '#111', fontWeight: '500' },
   sheetCancel: { marginTop: 8, backgroundColor: '#F3F4F6', borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  // Search / add member
+  searchInputWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#F9FAFB' },
+  searchInput: { flex: 1, fontSize: 15, color: '#111', paddingVertical: 12 },
+  searchBtn: { backgroundColor: '#1B4F8A', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, justifyContent: 'center', alignItems: 'center' },
+  searchBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  foundCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#ECFDF5', borderRadius: 12, padding: 14, borderWidth: 1.5, borderColor: '#A7F3D0', marginBottom: 10 },
+  notFoundBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFBEB', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#FDE68A', marginBottom: 10 },
+  inviteBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#1B4F8A', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  inviteBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  // Edit trip
+  editHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  editHeaderBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, minWidth: 60, alignItems: 'center', justifyContent: 'center' },
+  editHeaderTitle: { fontSize: 17, fontWeight: '700', color: '#111' },
+  editLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8 },
+  editInput: { borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: '#111', backgroundColor: '#F9FAFB' },
+  editDateWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#F9FAFB' },
+  destChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EFF6FF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1.5, borderColor: '#BFDBFE' },
+  destChipText: { fontSize: 13, color: '#1B4F8A', fontWeight: '600' },
   // Empty states
   emptyFull: { alignItems: 'center', paddingTop: 60, gap: 10 },
   emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },

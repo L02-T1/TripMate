@@ -8,6 +8,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
+import { ExpenseCategory, Member } from '../../types';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ACT_TYPES = ['Tham quan', 'Ăn uống', 'Chỗ ở', 'Di chuyển', 'Mua sắm', 'Vui chơi'];
 const ACT_TYPE_COLOR: Record<string, string> = {
@@ -20,28 +23,52 @@ const EXP_CAT_COLOR: Record<string, string> = {
   'Vui chơi': '#F59E0B', 'Mua sắm': '#10B981', 'Khác': '#6B7280',
 };
 
-function formatDateInput(raw: string) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDateInput(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 8);
   if (d.length <= 2) return d;
   if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
   return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 }
-function formatTimeInput(raw: string) {
+function formatTimeInput(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 4);
   if (d.length <= 2) return d;
   return `${d.slice(0, 2)}:${d.slice(2)}`;
 }
-function formatMoneyInput(raw: string) {
+function formatMoneyInput(raw: string): string {
   return raw.replace(/\D/g, '');
 }
 
-// ─── Shared sub-components ───
+/**
+ * Safe back navigation: go back if history exists, otherwise replace to fallback.
+ * Fixes the "GO_BACK was not handled by any navigator" warning.
+ */
+function useSafeBack(fallback: string = '/(tabs)/trips') {
+  const router = useRouter();
+  return (): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(fallback as any);
+    }
+  };
+}
+
+// ─── Shared sub-components ────────────────────────────────────────────────────
 
 function SectionLabel({ text }: { text: string }) {
   return <Text style={styles.sectionLabel}>{text}</Text>;
 }
 
-function Input({ label, value, onChangeText, placeholder, multiline, keyboardType, maxLength }: any) {
+function Input({
+  label, value, onChangeText, placeholder, multiline, keyboardType, maxLength,
+}: {
+  label: string; value: string;
+  onChangeText: (v: string) => void;
+  placeholder?: string; multiline?: boolean;
+  keyboardType?: any; maxLength?: number;
+}) {
   return (
     <View style={styles.fieldGroup}>
       <SectionLabel text={label} />
@@ -60,7 +87,9 @@ function Input({ label, value, onChangeText, placeholder, multiline, keyboardTyp
   );
 }
 
-function TagGroup({ label, options, selected, onToggle, colors }: {
+function TagGroup({
+  label, options, selected, onToggle, colors,
+}: {
   label: string; options: string[]; selected: string[];
   onToggle: (v: string) => void; colors?: Record<string, string>;
 }) {
@@ -72,9 +101,11 @@ function TagGroup({ label, options, selected, onToggle, colors }: {
           const active = selected.includes(o);
           const color = colors?.[o] || '#1B4F8A';
           return (
-            <TouchableOpacity key={o}
+            <TouchableOpacity
+              key={o}
               style={[styles.tag, active && { backgroundColor: color + '18', borderColor: color, borderWidth: 1.5 }]}
-              onPress={() => onToggle(o)}>
+              onPress={() => onToggle(o)}
+            >
               {active && <Ionicons name="checkmark" size={12} color={color} />}
               <Text style={[styles.tagText, active && { color, fontWeight: '700' }]}>{o}</Text>
             </TouchableOpacity>
@@ -85,20 +116,24 @@ function TagGroup({ label, options, selected, onToggle, colors }: {
   );
 }
 
-function MemberPicker({ label, members, selected, onToggle, single }: {
-  label: string; members: any[]; selected: string[];
+function MemberPicker({
+  label, members, selected, onToggle, single,
+}: {
+  label: string; members: Member[]; selected: string[];
   onToggle: (id: string) => void; single?: boolean;
 }) {
   return (
     <View style={styles.fieldGroup}>
       <SectionLabel text={label} />
       <View style={styles.memberGrid}>
-        {members.map(m => {
+        {members.map((m: Member) => {
           const active = selected.includes(m.id) || selected.includes(m.name.split(' ')[0]);
           return (
-            <TouchableOpacity key={m.id}
+            <TouchableOpacity
+              key={m.id}
               style={[styles.memberChip, active && styles.memberChipActive]}
-              onPress={() => onToggle(single ? m.name.split(' ')[0] : m.id)}>
+              onPress={() => onToggle(single ? m.name.split(' ')[0] : m.id)}
+            >
               <View style={[styles.memberAv, active && { backgroundColor: '#1B4F8A' }]}>
                 <Text style={styles.memberAvText}>{m.initials?.slice(0, 1) || m.name[0]}</Text>
               </View>
@@ -113,12 +148,13 @@ function MemberPicker({ label, members, selected, onToggle, single }: {
   );
 }
 
-// ─── ACTIVITY FORM ───
+// ─── ACTIVITY FORM ────────────────────────────────────────────────────────────
+
 function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
-  const router = useRouter();
+  const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addActivity, updateActivity, deleteActivity } = useApp();
   const trip = getTrip(tripId);
-  const existing = trip?.activities.find(a => a.id === actId);
+  const existing = trip?.activities.find((a) => a.id === actId);
   const isNew = actId === 'new';
 
   const [form, setForm] = useState({
@@ -127,32 +163,34 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
   });
 
   useEffect(() => {
-    if (existing) setForm({
-      name: existing.name, location: existing.location,
-      date: existing.date, time: existing.time,
-      type: existing.type || [], participants: existing.participants || [],
-      note: existing.note || '',
-    });
-    else if (trip?.members)
-      setForm(p => ({ ...p, participants: trip.members.map(m => m.id) }));
+    if (existing) {
+      setForm({
+        name: existing.name, location: existing.location,
+        date: existing.date, time: existing.time,
+        type: existing.type || [], participants: existing.participants || [],
+        note: existing.note || '',
+      });
+    } else if (trip?.members) {
+      setForm(p => ({ ...p, participants: trip.members.map((m: Member) => m.id) }));
+    }
   }, [actId]);
 
   const save = async () => {
     if (!form.name.trim()) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên hoạt động'); return; }
     if (isNew) await addActivity(tripId, form);
     else await updateActivity(tripId, actId, form);
-    router.back();
+    safeBack();
   };
 
   const del = () => Alert.alert('Xoá hoạt động', 'Hành động này không thể hoàn tác', [
     { text: 'Hủy', style: 'cancel' },
-    { text: 'Xoá', style: 'destructive', onPress: async () => { await deleteActivity(tripId, actId); router.back(); } },
+    { text: 'Xoá', style: 'destructive', onPress: async () => { await deleteActivity(tripId, actId); safeBack(); } },
   ]);
 
   return (
     <>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+        <TouchableOpacity onPress={safeBack} style={styles.iconBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isNew ? 'Thêm kế hoạch' : 'Chi tiết hoạt động'}</Text>
@@ -160,7 +198,6 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
       </View>
       <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
         <Input label="Tên hoạt động *" value={form.name} onChangeText={(v: string) => setForm(p => ({ ...p, name: v }))} placeholder="Tham quan Hồ Xuân Hương" />
-
         <Input label="Địa điểm" value={form.location} onChangeText={(v: string) => setForm(p => ({ ...p, location: v }))} placeholder="Trung tâm TP. Đà Lạt" />
 
         <View style={styles.rowFields}>
@@ -169,7 +206,7 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
             <View style={styles.iconInput}>
               <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
               <TextInput style={styles.iconInputText} placeholder="DD/MM/YYYY" placeholderTextColor="#C0C8D0"
-                value={form.date} onChangeText={v => setForm(p => ({ ...p, date: formatDateInput(v) }))}
+                value={form.date} onChangeText={(v: string) => setForm(p => ({ ...p, date: formatDateInput(v) }))}
                 keyboardType="numeric" maxLength={10} />
             </View>
           </View>
@@ -178,23 +215,26 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
             <View style={styles.iconInput}>
               <Ionicons name="time-outline" size={16} color="#9CA3AF" />
               <TextInput style={styles.iconInputText} placeholder="HH:MM" placeholderTextColor="#C0C8D0"
-                value={form.time} onChangeText={v => setForm(p => ({ ...p, time: formatTimeInput(v) }))}
+                value={form.time} onChangeText={(v: string) => setForm(p => ({ ...p, time: formatTimeInput(v) }))}
                 keyboardType="numeric" maxLength={5} />
             </View>
           </View>
         </View>
 
         <TagGroup label="Loại hoạt động" options={ACT_TYPES} selected={form.type}
-          onToggle={v => setForm(p => ({ ...p, type: p.type.includes(v) ? p.type.filter(x => x !== v) : [...p.type, v] }))}
+          onToggle={(v: string) => setForm(p => ({ ...p, type: p.type.includes(v) ? p.type.filter(x => x !== v) : [...p.type, v] }))}
           colors={ACT_TYPE_COLOR} />
 
         {trip && (
-          <MemberPicker label={`Người tham gia (${form.participants.length}/${trip.members.length})`}
+          <MemberPicker
+            label={`Người tham gia (${form.participants.length}/${trip.members.length})`}
             members={trip.members} selected={form.participants}
-            onToggle={id => setForm(p => ({ ...p, participants: p.participants.includes(id) ? p.participants.filter(x => x !== id) : [...p.participants, id] }))} />
+            onToggle={(id: string) => setForm(p => ({ ...p, participants: p.participants.includes(id) ? p.participants.filter(x => x !== id) : [...p.participants, id] }))}
+          />
         )}
 
-        <Input label="Ghi chú (tùy chọn)" value={form.note} onChangeText={(v: string) => setForm(p => ({ ...p, note: v }))}
+        <Input label="Ghi chú (tùy chọn)" value={form.note}
+          onChangeText={(v: string) => setForm(p => ({ ...p, note: v }))}
           placeholder="Mang theo ô vì trời có thể mưa..." multiline />
 
         <TouchableOpacity style={styles.primaryBtn} onPress={save}>
@@ -212,12 +252,13 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
   );
 }
 
-// ─── CHECKLIST FORM ───
+// ─── CHECKLIST FORM ───────────────────────────────────────────────────────────
+
 function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
-  const router = useRouter();
+  const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addChecklistItem, updateChecklistItem, deleteChecklistItem } = useApp();
   const trip = getTrip(tripId);
-  const existing = trip?.checklist.find(c => c.id === itemId);
+  const existing = trip?.checklist.find((c) => c.id === itemId);
   const isNew = itemId === 'new';
 
   const [form, setForm] = useState({
@@ -226,26 +267,35 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
   });
 
   useEffect(() => {
-    if (existing) setForm({ name: existing.name, category: existing.category as any, assignee: existing.assignee, dueDate: existing.dueDate, note: existing.note, completed: existing.completed });
+    if (existing) {
+      setForm({
+        name: existing.name,
+        category: existing.category as 'shared' | 'personal' | 'todo',
+        assignee: existing.assignee,
+        dueDate: existing.dueDate ?? '',
+        note: existing.note,
+        completed: existing.completed,
+      });
+    }
   }, [itemId]);
 
   const save = async () => {
     if (!form.name.trim()) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên mục'); return; }
     if (isNew) await addChecklistItem(tripId, form);
     else await updateChecklistItem(tripId, itemId, form);
-    router.back();
+    safeBack();
   };
 
-  const CATS = [
-    { key: 'shared', label: '🎒 Đồ chung', color: '#EF4444' },
-    { key: 'personal', label: '👤 Cá nhân', color: '#3B82F6' },
-    { key: 'todo', label: '✅ Việc cần làm', color: '#10B981' },
+  const CATS: { key: 'shared' | 'personal' | 'todo'; label: string; color: string }[] = [
+    { key: 'shared',   label: '🎒 Đồ chung',       color: '#EF4444' },
+    { key: 'personal', label: '👤 Cá nhân',          color: '#3B82F6' },
+    { key: 'todo',     label: '✅ Việc cần làm',     color: '#10B981' },
   ];
 
   return (
     <>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+        <TouchableOpacity onPress={safeBack} style={styles.iconBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isNew ? 'Thêm mục' : 'Chi tiết mục'}</Text>
@@ -255,15 +305,23 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
         {!isNew && (
           <TouchableOpacity
             style={[styles.completedToggle, form.completed && styles.completedToggleActive]}
-            onPress={() => { const newVal = !form.completed; setForm(p => ({ ...p, completed: newVal })); updateChecklistItem(tripId, itemId, { completed: newVal }); }}>
-            <Ionicons name={form.completed ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={form.completed ? '#10B981' : '#D1D5DB'} />
+            onPress={() => {
+              const newVal = !form.completed;
+              setForm(p => ({ ...p, completed: newVal }));
+              updateChecklistItem(tripId, itemId, { completed: newVal });
+            }}
+          >
+            <Ionicons name={form.completed ? 'checkmark-circle' : 'ellipse-outline'} size={24}
+              color={form.completed ? '#10B981' : '#D1D5DB'} />
             <Text style={[styles.completedToggleText, form.completed && { color: '#10B981' }]}>
               {form.completed ? 'Đã hoàn thành' : 'Chưa hoàn thành'}
             </Text>
           </TouchableOpacity>
         )}
 
-        <Input label="Tên mục *" value={form.name} onChangeText={(v: string) => setForm(p => ({ ...p, name: v }))} placeholder="Mua vé cáp treo Langbiang" />
+        <Input label="Tên mục *" value={form.name}
+          onChangeText={(v: string) => setForm(p => ({ ...p, name: v }))}
+          placeholder="Mua vé cáp treo Langbiang" />
 
         <View style={styles.fieldGroup}>
           <SectionLabel text="Danh mục" />
@@ -271,8 +329,11 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
             {CATS.map(c => (
               <TouchableOpacity key={c.key}
                 style={[styles.catChip, form.category === c.key && { backgroundColor: c.color + '15', borderColor: c.color, borderWidth: 1.5 }]}
-                onPress={() => setForm(p => ({ ...p, category: c.key as any }))}>
-                <Text style={[styles.catChipText, form.category === c.key && { color: c.color, fontWeight: '700' }]}>{c.label}</Text>
+                onPress={() => setForm(p => ({ ...p, category: c.key }))}
+              >
+                <Text style={[styles.catChipText, form.category === c.key && { color: c.color, fontWeight: '700' }]}>
+                  {c.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -281,7 +342,7 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
         {trip && (
           <MemberPicker label="Người phụ trách" members={trip.members}
             selected={[form.assignee]} single
-            onToggle={name => setForm(p => ({ ...p, assignee: name }))} />
+            onToggle={(name: string) => setForm(p => ({ ...p, assignee: name }))} />
         )}
 
         <View style={styles.fieldGroup}>
@@ -289,12 +350,13 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
           <View style={styles.iconInput}>
             <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
             <TextInput style={styles.iconInputText} placeholder="DD/MM/YYYY" placeholderTextColor="#C0C8D0"
-              value={form.dueDate} onChangeText={v => setForm(p => ({ ...p, dueDate: formatDateInput(v) }))}
+              value={form.dueDate} onChangeText={(v: string) => setForm(p => ({ ...p, dueDate: formatDateInput(v) }))}
               keyboardType="numeric" maxLength={10} />
           </View>
         </View>
 
-        <Input label="Ghi chú (tùy chọn)" value={form.note} onChangeText={(v: string) => setForm(p => ({ ...p, note: v }))}
+        <Input label="Ghi chú (tùy chọn)" value={form.note}
+          onChangeText={(v: string) => setForm(p => ({ ...p, note: v }))}
           placeholder="Giá khoảng 200k/người..." multiline />
 
         <TouchableOpacity style={styles.primaryBtn} onPress={save}>
@@ -305,7 +367,7 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
           <TouchableOpacity style={styles.dangerBtn} onPress={() =>
             Alert.alert('Xoá mục', 'Hành động này không thể hoàn tác', [
               { text: 'Hủy', style: 'cancel' },
-              { text: 'Xoá', style: 'destructive', onPress: async () => { await deleteChecklistItem(tripId, itemId); router.back(); } },
+              { text: 'Xoá', style: 'destructive', onPress: async () => { await deleteChecklistItem(tripId, itemId); safeBack(); } },
             ])
           }>
             <Ionicons name="trash-outline" size={16} color="#EF4444" />
@@ -317,25 +379,35 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
   );
 }
 
-// ─── EXPENSE FORM ───
+// ─── EXPENSE FORM ─────────────────────────────────────────────────────────────
+
 function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
-  const router = useRouter();
+  const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addExpense, updateExpense, deleteExpense } = useApp();
   const trip = getTrip(tripId);
-  const existing = trip?.expenses.find(e => e.id === expId);
+  const existing = trip?.expenses.find((e) => e.id === expId);
   const isNew = expId === 'new';
 
   const [form, setForm] = useState({
-    name: '', amount: '', category: 'Ăn uống', paidBy: '',
+    name: '', amount: '', category: 'Ăn uống' as ExpenseCategory, paidBy: '',
     date: '', splitType: 'equal' as 'equal' | 'detail',
     participants: [] as string[],
   });
 
   useEffect(() => {
     if (existing) {
-      setForm({ name: existing.name, amount: String(existing.amount), category: existing.category, paidBy: existing.paidBy, date: existing.date, splitType: existing.splitType, participants: existing.participants || [] });
+      setForm({
+        name: existing.name, amount: String(existing.amount),
+        category: existing.category, paidBy: existing.paidBy,
+        date: existing.date, splitType: existing.splitType,
+        participants: existing.participants || [],
+      });
     } else if (trip?.members) {
-      setForm(p => ({ ...p, participants: trip.members.map(m => m.id), paidBy: trip.members[0]?.name.split(' ')[0] || '' }));
+      setForm(p => ({
+        ...p,
+        participants: trip.members.map((m: Member) => m.id),
+        paidBy: trip.members[0]?.name.split(' ')[0] || '',
+      }));
     }
   }, [expId]);
 
@@ -345,7 +417,7 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
     const data = { ...form, amount: Number(form.amount), splits: [] };
     if (isNew) await addExpense(tripId, data);
     else await updateExpense(tripId, expId, data);
-    router.back();
+    safeBack();
   };
 
   const amt = Number(form.amount) || 0;
@@ -354,49 +426,51 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
   return (
     <>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+        <TouchableOpacity onPress={safeBack} style={styles.iconBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{isNew ? 'Thêm chi phí' : 'Chi tiết khoản chi'}</Text>
         <TouchableOpacity onPress={save}><Text style={styles.saveText}>Lưu</Text></TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
-        {/* Amount hero */}
         <View style={styles.amtHero}>
           <Text style={styles.amtHeroLabel}>Số tiền</Text>
           <View style={styles.amtInputRow}>
             <TextInput
               style={styles.amtInput}
               value={form.amount ? Number(form.amount).toLocaleString('vi-VN') : ''}
-              onChangeText={v => setForm(p => ({ ...p, amount: formatMoneyInput(v) }))}
-              placeholder="0"
-              placeholderTextColor="#CBD5E1"
-              keyboardType="numeric"
-              textAlign="center"
+              onChangeText={(v: string) => setForm(p => ({ ...p, amount: formatMoneyInput(v) }))}
+              placeholder="0" placeholderTextColor="#CBD5E1"
+              keyboardType="numeric" textAlign="center"
             />
             <Text style={styles.amtCurrency}>đ</Text>
           </View>
         </View>
 
-        <Input label="Tên khoản chi *" value={form.name} onChangeText={(v: string) => setForm(p => ({ ...p, name: v }))} placeholder="Bún bò buổi trưa" />
+        <Input label="Tên khoản chi *" value={form.name}
+          onChangeText={(v: string) => setForm(p => ({ ...p, name: v }))}
+          placeholder="Bún bò buổi trưa" />
 
         <TagGroup label="Phân loại" options={EXP_CATS} selected={[form.category]}
-          onToggle={v => setForm(p => ({ ...p, category: v }))} colors={EXP_CAT_COLOR} />
+          onToggle={(v: string) => setForm(p => ({ ...p, category: v as ExpenseCategory }))}
+          colors={EXP_CAT_COLOR} />
 
         {trip && (
           <MemberPicker label="Người trả tiền" members={trip.members}
             selected={[form.paidBy]} single
-            onToggle={name => setForm(p => ({ ...p, paidBy: name }))} />
+            onToggle={(name: string) => setForm(p => ({ ...p, paidBy: name }))} />
         )}
 
         <View style={styles.fieldGroup}>
           <SectionLabel text="Cách chia" />
           <View style={styles.splitRow}>
-            {(['equal', 'detail'] as const).map(s => (
+            {(['equal', 'detail'] as const).map((s: 'equal' | 'detail') => (
               <TouchableOpacity key={s}
                 style={[styles.splitBtn, form.splitType === s && styles.splitBtnActive]}
-                onPress={() => setForm(p => ({ ...p, splitType: s }))}>
-                <Ionicons name={s === 'equal' ? 'people-outline' : 'list-outline'} size={16} color={form.splitType === s ? '#1B4F8A' : '#9CA3AF'} />
+                onPress={() => setForm(p => ({ ...p, splitType: s }))}
+              >
+                <Ionicons name={s === 'equal' ? 'people-outline' : 'list-outline'} size={16}
+                  color={form.splitType === s ? '#1B4F8A' : '#9CA3AF'} />
                 <Text style={[styles.splitBtnText, form.splitType === s && styles.splitBtnTextActive]}>
                   {s === 'equal' ? 'Chia đều' : 'Chi tiết'}
                 </Text>
@@ -406,9 +480,16 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
         </View>
 
         {trip && (
-          <MemberPicker label={`Người tham gia (${form.participants.length}/${trip.members.length})`}
+          <MemberPicker
+            label={`Người tham gia (${form.participants.length}/${trip.members.length})`}
             members={trip.members} selected={form.participants}
-            onToggle={id => setForm(p => ({ ...p, participants: p.participants.includes(id) ? p.participants.filter(x => x !== id) : [...p.participants, id] }))} />
+            onToggle={(id: string) => setForm(p => ({
+              ...p,
+              participants: p.participants.includes(id)
+                ? p.participants.filter(x => x !== id)
+                : [...p.participants, id],
+            }))}
+          />
         )}
 
         {form.splitType === 'equal' && amt > 0 && form.participants.length > 0 && (
@@ -423,7 +504,7 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           <View style={styles.iconInput}>
             <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
             <TextInput style={styles.iconInputText} placeholder="DD/MM/YYYY" placeholderTextColor="#C0C8D0"
-              value={form.date} onChangeText={v => setForm(p => ({ ...p, date: formatDateInput(v) }))}
+              value={form.date} onChangeText={(v: string) => setForm(p => ({ ...p, date: formatDateInput(v) }))}
               keyboardType="numeric" maxLength={10} />
           </View>
         </View>
@@ -436,7 +517,7 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           <TouchableOpacity style={styles.dangerBtn} onPress={() =>
             Alert.alert('Xoá khoản chi', 'Hành động này không thể hoàn tác', [
               { text: 'Hủy', style: 'cancel' },
-              { text: 'Xoá', style: 'destructive', onPress: async () => { await deleteExpense(tripId, expId); router.back(); } },
+              { text: 'Xoá', style: 'destructive', onPress: async () => { await deleteExpense(tripId, expId); safeBack(); } },
             ])
           }>
             <Ionicons name="trash-outline" size={16} color="#EF4444" />
@@ -448,28 +529,28 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
   );
 }
 
-// ─── MEMBER ADD FORM ───
+// ─── MEMBER ADD FORM ──────────────────────────────────────────────────────────
+
 function MemberForm({ tripId }: { tripId: string }) {
-  const router = useRouter();
+  const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addMember } = useApp();
   const trip = getTrip(tripId);
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
-  const [added, setAdded] = useState(false);
 
   const handleAdd = async () => {
     if (!phone.trim()) return;
     setLoading(true);
     const ok = await addMember(tripId, phone.trim());
     setLoading(false);
-    if (ok) { setAdded(true); setPhone(''); Alert.alert('Thành công', `Đã thêm ${phone}`); }
+    if (ok) { setPhone(''); Alert.alert('Thành công', `Đã thêm ${phone}`); }
     else Alert.alert('Lỗi', 'Thành viên đã tồn tại trong chuyến đi');
   };
 
   return (
     <>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+        <TouchableOpacity onPress={safeBack} style={styles.iconBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Thêm thành viên</Text>
@@ -481,10 +562,12 @@ function MemberForm({ tripId }: { tripId: string }) {
           <View style={styles.searchAddRow}>
             <View style={styles.searchAddInput}>
               <Ionicons name="call-outline" size={16} color="#9CA3AF" />
-              <TextInput style={{ flex: 1, fontSize: 15, color: '#111', paddingVertical: 0 }}
+              <TextInput
+                style={{ flex: 1, fontSize: 15, color: '#111', paddingVertical: 0 }}
                 placeholder="0912 345 678" placeholderTextColor="#C0C8D0"
                 value={phone} onChangeText={setPhone} keyboardType="phone-pad"
-                onSubmitEditing={handleAdd} returnKeyType="done" />
+                onSubmitEditing={handleAdd} returnKeyType="done"
+              />
             </View>
             <TouchableOpacity style={[styles.addBtn, loading && { opacity: 0.6 }]} onPress={handleAdd} disabled={loading}>
               <Text style={styles.addBtnText}>{loading ? '...' : 'Thêm'}</Text>
@@ -492,21 +575,13 @@ function MemberForm({ tripId }: { tripId: string }) {
           </View>
         </View>
 
-        <View style={styles.inviteBox}>
-          <Ionicons name="link-outline" size={18} color="#1B4F8A" />
-          <Text style={styles.inviteText} numberOfLines={1}>tripmate.app/invite/abc123</Text>
-          <TouchableOpacity style={styles.copyBtn}>
-            <Text style={styles.copyBtnText}>Sao chép</Text>
-          </TouchableOpacity>
-        </View>
-
         {trip && trip.members.length > 0 && (
           <View style={styles.fieldGroup}>
             <SectionLabel text={`Thành viên hiện tại (${trip.members.length})`} />
-            {trip.members.map(m => (
+            {trip.members.map((m: Member) => (
               <View key={m.id} style={styles.existingMemberRow}>
                 <View style={[styles.memberAv, m.role === 'leader' && { backgroundColor: '#F59E0B' }]}>
-                  <Text style={styles.memberAvText}>{m.initials.slice(0, 1)}</Text>
+                  <Text style={styles.memberAvText}>{m.initials?.slice(0, 1) || m.name[0]}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.memberChipNameText}>{m.name}</Text>
@@ -526,21 +601,24 @@ function MemberForm({ tripId }: { tripId: string }) {
   );
 }
 
-// ─── ROOT ───
+// ─── ROOT ─────────────────────────────────────────────────────────────────────
+
 export default function ActivityScreen() {
   const { id, tripId, type } = useLocalSearchParams<{ id: string; tripId: string; type: string }>();
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        {type === 'checklist' ? <ChecklistForm tripId={tripId!} itemId={id!} /> :
-         type === 'expense'   ? <ExpenseForm   tripId={tripId!} expId={id!} />  :
-         type === 'member'    ? <MemberForm    tripId={tripId!} /> :
-                                <ActivityForm  tripId={tripId!} actId={id!} />}
+        {type === 'checklist' ? <ChecklistForm tripId={tripId!} itemId={id!} />  :
+         type === 'expense'   ? <ExpenseForm   tripId={tripId!} expId={id!}  />  :
+         type === 'member'    ? <MemberForm    tripId={tripId!}               />  :
+                                <ActivityForm  tripId={tripId!} actId={id!}  />}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+// ─── STYLES ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
@@ -593,10 +671,6 @@ const styles = StyleSheet.create({
   searchAddInput: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: '#F9FAFB' },
   addBtn: { backgroundColor: '#1B4F8A', borderRadius: 12, paddingHorizontal: 18, paddingVertical: 14 },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  inviteBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F0F9FF', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#BAE6FD' },
-  inviteText: { flex: 1, fontSize: 13, color: '#0369A1' },
-  copyBtn: { backgroundColor: '#1B4F8A', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  copyBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   existingMemberRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F3F4F6' },
   leaderBadgeSm: { backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   leaderBadgeSmText: { fontSize: 11, color: '#92400E', fontWeight: '700' },

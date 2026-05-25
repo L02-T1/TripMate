@@ -22,7 +22,7 @@ export default function ProfileScreen() {
   const handleSignOut = () => {
     Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
       { text: 'Hủy', style: 'cancel' },
-      { text: 'Đăng xuất', style: 'destructive', onPress: () => { signOut(); router.replace('/(auth)/sign-in'); } },
+      { text: 'Đăng xuất', style: 'destructive', onPress: async () => { await signOut(); router.replace('/(auth)/sign-in' as any); } },
     ]);
   };
 
@@ -39,11 +39,11 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/trips')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#111" />
         </TouchableOpacity>
         <Text style={styles.title}>Profile</Text>
-        <TouchableOpacity onPress={() => router.push('/settings/index')} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.push('/settings/index' as any)} style={styles.backBtn}>
           <Ionicons name="settings-outline" size={22} color="#6B7280" />
         </TouchableOpacity>
       </View>
@@ -106,7 +106,7 @@ export default function ProfileScreen() {
           <View style={styles.divider} />
           <MenuItem icon="time-outline" label="Lịch sử chuyến đi" onPress={() => router.push('/profile/history')} />
           <View style={styles.divider} />
-          <MenuItem icon="settings-outline" label="Cài đặt" onPress={() => router.push('/settings/index')} />
+          <MenuItem icon="settings-outline" label="Cài đặt" onPress={() => router.push('/settings/index' as any)} />
           <View style={styles.divider} />
           <MenuItem icon="log-out-outline" label="Đăng xuất" onPress={handleSignOut} danger />
         </View>

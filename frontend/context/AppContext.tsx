@@ -29,6 +29,7 @@ interface AppContextType {
   deleteTrip: (id: string) => Promise<void>;
   joinTrip: (inviteCode: string) => Promise<Trip | null>;
   findUser: (query: string) => Promise<any | null>;
+  updateTrip: (id: string, data: Partial<{ name: string; startDate: string; endDate: string; description: string; destinations: string[] }>) => Promise<void>;
   addActivity: (tripId: string, data: Omit<Activity, 'id' | 'tripId'>) => Promise<void>;
   updateActivity: (tripId: string, actId: string, data: Partial<Activity>) => Promise<void>;
   deleteActivity: (tripId: string, actId: string) => Promise<void>;
@@ -231,18 +232,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     logAction('Auth', 'Signing out user: ' + (user?.email || 'unknown'));
     try {
+      // 1. Xóa token (SecureStore trên native, localStorage trên web)
       await clearToken();
+
+      // 2. Xóa AsyncStorage cache
       await AsyncStorage.multiRemove([USER_CACHE_KEY, TRIPS_CACHE_KEY]);
+
+      // 3. Trên web (localhost) token dùng localStorage — xóa thêm để chắc chắn
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('tripmate_token');
+        window.localStorage.removeItem(USER_CACHE_KEY);
+        window.localStorage.removeItem(TRIPS_CACHE_KEY);
+        // Xóa tất cả key của tripmate trong localStorage
+        Object.keys(window.localStorage)
+          .filter(k => k.startsWith('tripmate_'))
+          .forEach(k => window.localStorage.removeItem(k));
+      }
+
+      // 4. Reset state
       setUser(null);
       setTrips([]);
       setIsOnline(false);
       analytics.reset();
-      logInfo('Auth', 'Signed out successfully');
+      logInfo('Auth', 'Signed out successfully — all storage cleared');
     } catch (err: any) {
       logError('Auth', 'signOut error', err);
-      // Still clear state even if storage fails
+      // Dù lỗi vẫn phải clear state
       setUser(null);
       setTrips([]);
+      setIsOnline(false);
     }
   };
 
@@ -290,6 +308,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       logError('Auth', 'changePassword error', err?.data?.error || err.message);
       return false;
+    }
+  };
+
+
+  // ── Update trip ───────────────────────────────────────────────────────────────
+
+  const updateTrip = async (id: string, data: Partial<{
+    name: string; startDate: string; endDate: string;
+    description: string; destinations: string[];
+  }>) => {
+    if (!id) {
+      logWarn('Trip', 'updateTrip: id is required');
+      return;
+    }
+    if (data.name !== undefined && !data.name.trim()) {
+      logWarn('Trip', 'updateTrip: name cannot be empty');
+      throw new Error('Tên chuyến đi không được trống');
+    }
+    logAction('Trip', `updateTrip: ${id}`, data);
+    updateLocalTrip(id, t => ({ ...t, ...data }));
+    if (isOnline) {
+      try {
+        await api.trips.update(id, data);
+        logInfo('Trip', `Updated trip ${id}`);
+      } catch (err: any) {
+        logError('Trip', 'updateTrip API error', err?.data?.error || err.message);
+      }
     }
   };
 
@@ -664,7 +709,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user, trips, loading, isOnline,
       signIn, signUp, signOut, updateUser, changePassword, refreshTrips,
       getTrip, createTrip, deleteTrip, joinTrip,
-      findUser,
+      findUser, updateTrip,
       addActivity, updateActivity, deleteActivity,
       addChecklistItem, updateChecklistItem, deleteChecklistItem,
       addExpense, updateExpense, deleteExpense,

@@ -67,7 +67,7 @@ function TripCard({ trip, onPress }: { trip: Trip; onPress: () => void }) {
               </View>
             ))}
             {(trip.members?.length || 0) > 4 && (
-              <View style={[styles.avatar, styles.avatarMore, { marginLeft: -8 }]}>
+              <View key="more" style={[styles.avatar, styles.avatarMore, { marginLeft: -8 }]}>
                 <Text style={styles.avatarText}>+{trip.members!.length - 4}</Text>
               </View>
             )}
@@ -131,7 +131,7 @@ export default function TripsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.push('/profile/index')} style={styles.userAvatar}>
+          <TouchableOpacity onPress={() => router.push('/profile/index' as any)} style={styles.userAvatar}>
             <Text style={styles.userAvatarText}>{user?.username?.[0]?.toUpperCase() || 'U'}</Text>
           </TouchableOpacity>
           <View>
