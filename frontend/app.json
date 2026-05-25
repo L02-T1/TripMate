@@ -17,10 +17,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1B4F8A"
       },
-      "package": "com.tripmate.app",
-      "compileSdkVersion": 34,
-      "targetSdkVersion": 34,
-      "minSdkVersion": 24,
+      "package": "com.inowsuke.tripmate",
       "permissions": [
         "CAMERA",
         "INTERNET",
