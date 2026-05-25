@@ -79,25 +79,23 @@ export default function ProfileTab() {
   const { confirm, Dialog } = useConfirm();
   const [signingOut, setSigningOut] = useState(false);
 
-  const handleSignOut = () => {
-    confirm(
-      'Đăng xuất',
-      'Bạn có chắc muốn đăng xuất khỏi TripMate?',
-      async () => {
-        setSigningOut(true);
-        try {
-          await signOut();
-          router.replace('/(auth)/sign-in' as any);
-        } catch {
-          setSigningOut(false);
-        }
-      }
-    );
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    console.log('[ProfileTab] handleSignOut called');
+    setSigningOut(true);
+    try {
+      console.log('[ProfileTab] calling signOut...');
+      await signOut();
+      console.log('[ProfileTab] signOut done, navigating to sign-in');
+      router.replace('/(auth)/sign-in' as any);
+    } catch (err) {
+      console.error('[ProfileTab] signOut error:', err);
+      setSigningOut(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <Dialog />
       <View style={styles.header}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings/index' as any)}>
           <Ionicons name="settings-outline" size={22} color="#6B7280" />
