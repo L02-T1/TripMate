@@ -179,34 +179,40 @@ exports.forgotPassword = async (req, res) => {
       const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
       try {
-        const { Resend } = require('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        let ResendClass = null;
+        try {
+          ResendClass = require('resend').Resend;
+        } catch (e) {
+          logger.warn('[Auth] resend package not installed - email skipped');
+        }
 
-        await resend.emails.send({
-          from: 'TripMate <onboarding@resend.dev>',
-          to: email,
-          subject: 'Dat lai mat khau TripMate',
-          html: `
-            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
-              <h2 style="color:#1B4F8A">TripMate</h2>
-              <h3>Ban da yeu cau dat lai mat khau</h3>
-              <p style="color:#6B7280">Nhan vao nut ben duoi de dat lai mat khau. Link se het han sau <strong>1 gio</strong>.</p>
-              <a href="${resetUrl}"
-                style="display:inline-block;background:#1B4F8A;color:#fff;padding:14px 32px;
-                       border-radius:10px;text-decoration:none;font-weight:700;margin:24px 0;">
-                Dat lai mat khau
-              </a>
-              <p style="color:#9CA3AF;font-size:13px;">Neu ban khong yeu cau viec nay, hay bo qua email nay.</p>
-              <hr style="border:none;border-top:1px solid #F3F4F6;margin:24px 0"/>
-              <p style="color:#9CA3AF;font-size:12px;">TripMate - Travel Smart, Spend Wisely</p>
-            </div>
-          `,
-        });
-
-        logger.info(`[Auth] Password reset email sent to: ${email}`);
+        if (!process.env.RESEND_API_KEY) {
+          logger.warn('[Auth] RESEND_API_KEY not set - reset token: ' + resetToken);
+        } else if (ResendClass) {
+          const resend = new ResendClass(process.env.RESEND_API_KEY);
+          await resend.emails.send({
+            from: 'TripMate <onboarding@resend.dev>',
+            to: email,
+            subject: 'Dat lai mat khau TripMate',
+            html: `
+              <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+                <h2 style="color:#1B4F8A">TripMate</h2>
+                <h3>Ban da yeu cau dat lai mat khau</h3>
+                <p style="color:#6B7280">Nhan vao nut ben duoi de dat lai mat khau. Link se het han sau <strong>1 gio</strong>.</p>
+                <a href="${resetUrl}"
+                  style="display:inline-block;background:#1B4F8A;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;margin:24px 0;">
+                  Dat lai mat khau
+                </a>
+                <p style="color:#9CA3AF;font-size:13px;">Neu ban khong yeu cau viec nay, hay bo qua email nay.</p>
+                <hr style="border:none;border-top:1px solid #F3F4F6;margin:24px 0"/>
+                <p style="color:#9CA3AF;font-size:12px;">TripMate - Travel Smart, Spend Wisely</p>
+              </div>
+            `,
+          });
+          logger.info('[Auth] Password reset email sent to: ' + email);
+        }
       } catch (emailErr) {
         logger.error('[Auth] forgotPassword email error:', emailErr.message);
-        // Khong fail request neu email loi — van tra 200
       }
     }
 
