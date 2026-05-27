@@ -11,9 +11,11 @@ jobs:
   test-backend:
     name: Backend Tests
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./backend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,21 +29,38 @@ jobs:
         run: npm ci
 
       - name: Run backend tests with coverage
-        run: npx jest --coverage --ci --forceExit
+        run: |
+          npx jest \
+            --coverage \
+            --coverageReporters=html \
+            --coverageReporters=lcov \
+            --coverageReporters=text \
+            --ci \
+            --forceExit
 
-      - name: Upload coverage report
+      # Upload HTML coverage report as artifact
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./backend/coverage
+
+      # Upload coverage to Codecov
+      - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v4
         with:
           directory: ./backend/coverage
           fail_ci_if_error: false
 
-  # ─── Frontend Lint & TypeScript Check ─────────────────
+  # ─── Frontend TypeScript Check ───────────────────────
   check-frontend:
     name: Frontend TypeScript Check
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: ./frontend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -57,15 +76,18 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit --skipLibCheck
 
-  # ─── Build Android APK (main branch only) ─────────────
+  # ─── Build Android APK ───────────────────────────────
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
     needs: [test-backend, check-frontend]
+
     if: github.ref == 'refs/heads/main'
+
     defaults:
       run:
         working-directory: ./frontend
+
     steps:
       - uses: actions/checkout@v4
 
@@ -82,20 +104,23 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
       - name: Build APK (Preview)
         run: eas build --platform android --profile preview --non-interactive
         env:
-          EXPO_PUBLIC_API_URL: ${{ secrets.API_URL || 'https://tripmate-api.railway.app' }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.API_URL }}
 
-  # ─── Deploy Backend to Railway ────────────────────────
+  # ─── Deploy Backend to Railway ───────────────────────
   deploy-backend:
     name: Deploy Backend
     runs-on: ubuntu-latest
+
     needs: [test-backend]
+
     if: github.ref == 'refs/heads/main'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -106,4 +131,4 @@ jobs:
         run: railway up --service tripmate-backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        continue-on-error: true  # Don't fail CI if deployment token not set
+        continue-on-error: true

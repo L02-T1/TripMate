@@ -391,7 +391,7 @@ const deleteAccount = async (): Promise<boolean> => {
     );
 
     if (isOnline) {
-      await api.users.delete(user.id);
+      await api.auth.deleteAccount();
     }
 
     await signOut();

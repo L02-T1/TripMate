@@ -2,8 +2,11 @@ import { secureGet, secureSet, secureDel } from './storage';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL
-  || 'https://tripmate-production-1680.up.railway.app';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+
+if (!BASE_URL) {
+  throw new Error("EXPO_PUBLIC_API_URL is not defined in .env");
+}
 const TOKEN_KEY = 'tripmate_token';
 
 // ─── Token management ─────────────────────────────────────────────────────────
@@ -116,6 +119,12 @@ const auth = {
 
   changePassword: (currentPassword: string, newPassword: string) =>
     post<{ message: string }>('/auth/change-password', { currentPassword, newPassword }),
+
+  forgotPassword: (email: string) =>
+    post<{ message: string }>('/auth/forgot-password', { email }, false),
+
+  deleteAccount: () =>
+    del<{ message: string }>('/auth/account'),
 };
 
 const trips = {

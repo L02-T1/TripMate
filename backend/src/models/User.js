@@ -33,6 +33,8 @@ const userSchema = new mongoose.Schema(
       minlength: [6, 'Mật khẩu ít nhất 6 ký tự'],
       select: false,   // never returned by default
     },
+    resetPasswordToken:   { type: String, select: false },
+    resetPasswordExpires: { type: Date,   select: false },
 
     // ── Profile ──────────────────────────────────────────────────────────────
     bio:             { type: String, maxlength: 300, default: '' },

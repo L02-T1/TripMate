@@ -121,6 +121,8 @@ router.patch('/password', auth, ctrl.changePassword);
  */
 router.delete('/account', auth, ctrl.deleteAccount);
 
+router.post('/forgot-password', ctrl.forgotPassword);
+
 module.exports = router;
 
 // Alias: frontend calls POST /auth/change-password

@@ -127,12 +127,14 @@ function MemberPicker({
       <SectionLabel text={label} />
       <View style={styles.memberGrid}>
         {members.map((m: Member) => {
-          const active = selected.includes(m.id) || selected.includes(m.name.split(' ')[0]);
+          // single mode (paidBy) uses first name; multi mode (participants) uses id
+          const key = single ? m.name.split(' ')[0] : m.id;
+          const active = selected.includes(key);
           return (
             <TouchableOpacity
               key={m.id}
               style={[styles.memberChip, active && styles.memberChipActive]}
-              onPress={() => onToggle(single ? m.name.split(' ')[0] : m.id)}
+              onPress={() => onToggle(key)}
             >
               <View style={[styles.memberAv, active && { backgroundColor: '#1B4F8A' }]}>
                 <Text style={styles.memberAvText}>{m.initials?.slice(0, 1) || m.name[0]}</Text>
@@ -393,6 +395,8 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
     date: '', splitType: 'equal' as 'equal' | 'detail',
     participants: [] as string[],
   });
+  // customAmounts: { [memberId]: amountString }
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (existing) {
@@ -403,18 +407,34 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
         participants: existing.participants || [],
       });
     } else if (trip?.members) {
+      const ids = trip.members.map((m: Member) => m.id);
       setForm(p => ({
         ...p,
-        participants: trip.members.map((m: Member) => m.id),
+        participants: ids,
         paidBy: trip.members[0]?.name.split(' ')[0] || '',
       }));
+      // Init custom amounts to 0
+      const init: Record<string, string> = {};
+      ids.forEach((id: string) => { init[id] = ''; });
+      setCustomAmounts(init);
     }
   }, [expId]);
 
   const save = async () => {
     if (!form.name.trim()) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên khoản chi'); return; }
     if (!form.amount || isNaN(Number(form.amount))) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập số tiền hợp lệ'); return; }
-    const data = { ...form, amount: Number(form.amount), splits: [] };
+    // Build splits for detail mode
+    const splits = form.splitType === 'detail'
+      ? form.participants.map(id => {
+          const member = trip?.members.find((m: Member) => m.id === id);
+          return {
+            memberId: id,
+            memberName: member?.name.split(' ')[0] || id,
+            amount: Number(customAmounts[id] || 0),
+          };
+        }).filter(s => s.amount > 0)
+      : [];
+    const data = { ...form, amount: Number(form.amount), splits };
     if (isNew) await addExpense(tripId, data);
     else await updateExpense(tripId, expId, data);
     safeBack();
@@ -496,6 +516,50 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           <View style={styles.perPersonBox}>
             <Text style={styles.perPersonLabel}>Mỗi người trả</Text>
             <Text style={styles.perPersonAmt}>{perPerson.toLocaleString('vi-VN')} đ</Text>
+          </View>
+        )}
+
+        {form.splitType === 'detail' && trip && form.participants.length > 0 && (
+          <View style={styles.fieldGroup}>
+            <SectionLabel text="Nhập số tiền từng người" />
+            {trip.members
+              .filter((m: Member) => form.participants.includes(m.id))
+              .map((m: Member) => (
+                <View key={m.id} style={styles.detailRow}>
+                  <View style={styles.memberAv}>
+                    <Text style={styles.memberAvText}>{m.initials?.slice(0,1) || m.name[0]}</Text>
+                  </View>
+                  <Text style={styles.detailName}>{m.name.split(' ')[0]}</Text>
+                  <View style={styles.detailInputWrap}>
+                    <TextInput
+                      style={styles.detailInput}
+                      value={customAmounts[m.id] ? Number(customAmounts[m.id]).toLocaleString('vi-VN') : ''}
+                      onChangeText={v => {
+                        const raw = v.replace(/\D/g, '');
+                        setCustomAmounts(prev => ({ ...prev, [m.id]: raw }));
+                      }}
+                      placeholder="0"
+                      placeholderTextColor="#C0C8D0"
+                      keyboardType="numeric"
+                      textAlign="right"
+                    />
+                    <Text style={styles.detailCurrency}>đ</Text>
+                  </View>
+                </View>
+              ))}
+            {/* Total check */}
+            {(() => {
+              const detailTotal = form.participants.reduce((s, id) => s + (Number(customAmounts[id]) || 0), 0);
+              const diff = amt - detailTotal;
+              return (
+                <View style={[styles.detailTotalRow, diff !== 0 && { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={styles.detailTotalLabel}>
+                    {diff === 0 ? '✅ Khớp' : diff > 0 ? `⚠️ Còn thiếu ${diff.toLocaleString('vi-VN')}đ` : `⚠️ Vượt quá ${Math.abs(diff).toLocaleString('vi-VN')}đ`}
+                  </Text>
+                  <Text style={styles.detailTotalAmt}>{detailTotal.toLocaleString('vi-VN')} đ</Text>
+                </View>
+              );
+            })()}
           </View>
         )}
 
@@ -676,4 +740,12 @@ const styles = StyleSheet.create({
   leaderBadgeSmText: { fontSize: 11, color: '#92400E', fontWeight: '700' },
   memberBadgeSm: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   memberBadgeSmText: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  detailName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
+  detailInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#F9FAFB' },
+  detailInput: { minWidth: 80, fontSize: 15, color: '#1B4F8A', fontWeight: '700', textAlign: 'right' },
+  detailCurrency: { fontSize: 13, color: '#1B4F8A', fontWeight: '600' },
+  detailTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ECFDF5', borderRadius: 10, padding: 12, marginTop: 8 },
+  detailTotalLabel: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  detailTotalAmt: { fontSize: 15, fontWeight: '800', color: '#1B4F8A' },
 });
