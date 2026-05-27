@@ -11,7 +11,6 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Email không hợp lệ'],
-      index: true,
     },
     username: {
       type: String,
@@ -25,7 +24,6 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Số điện thoại là bắt buộc'],
       unique: true,
       trim: true,
-      index: true,
     },
     password: {
       type: String,
@@ -33,7 +31,6 @@ const userSchema = new mongoose.Schema(
       minlength: [6, 'Mật khẩu ít nhất 6 ký tự'],
       select: false,   // never returned by default
     },
-
     resetPasswordToken:   { type: String, select: false },
     resetPasswordExpires: { type: Date,   select: false },
 
