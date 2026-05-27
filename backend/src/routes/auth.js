@@ -121,7 +121,30 @@ router.patch('/password', auth, ctrl.changePassword);
  */
 router.delete('/account', auth, ctrl.deleteAccount);
 
-router.post('/forgot-password', ctrl.forgotPassword);
+/**
+ * @swagger
+ * /auth/forgot-password:
+ *   post:
+ *     summary: Quen mat khau - gui email dat lai
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, example: user@email.com }
+ *     responses:
+ *       200: { description: Email da gui }
+ */
+router.post(
+  '/forgot-password',
+  [body('email').isEmail().withMessage('Email khong hop le')],
+  validate,
+  ctrl.forgotPassword
+);
 
 module.exports = router;
 

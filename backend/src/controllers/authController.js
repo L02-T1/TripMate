@@ -157,30 +157,31 @@ exports.deleteAccount = async (req, res) => {
   }
 };
 
+// POST /auth/forgot-password
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email là bắt buộc' });
+    if (!email) return res.status(400).json({ error: 'Email la bat buoc' });
 
-    // Find user (don't reveal if exists - security)
-    const User = require('../models/User');
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (user) {
-      // In production: generate reset token, send email
-      // For now: log the request (implement email service later)
-      const resetToken = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      user.resetPasswordToken = resetToken;
-      user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
-      await user.save();
-      logger.info(`[Auth] Password reset requested for: ${email}`);
-      // TODO: Send email with resetToken
+      // Generate a simple reset token (in production: send via email service)
+      const crypto = require('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      user.resetPasswordToken   = crypto.createHash('sha256').update(resetToken).digest('hex');
+      user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await user.save({ validateBeforeSave: false });
+
+      // TODO: plug in an email service (nodemailer, SendGrid, Resend...)
+      // For now: log the token so it can be used in development
+      logger.info(`[Auth] Password reset token for ${email}: ${resetToken}`);
     }
 
-    // Always return success (don't reveal if email exists)
-    res.json({ message: 'Nếu email tồn tại, bạn sẽ nhận được hướng dẫn trong vài phút.' });
+    // Always return 200 — never reveal whether email exists (security)
+    res.json({ message: 'Neu email ton tai, ban se nhan duoc huong dan trong vai phut.' });
   } catch (err) {
     logger.error('[Auth] forgotPassword error:', err.message);
-    res.status(500).json({ message: 'Lỗi server' });
+    res.status(500).json({ error: 'Loi he thong' });
   }
 };

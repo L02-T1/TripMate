@@ -3,6 +3,7 @@ name: Tests & Coverage
 on:
   push:
     branches: [main, develop]
+
   pull_request:
     branches: [main, develop]
 
@@ -30,22 +31,24 @@ jobs:
         run: npm ci
 
       - name: Run tests with coverage
-        run: npm test -- --coverage --coverageReporters=lcov --coverageReporters=text --reporters=default --reporters=jest-html-reporter
+        run: |
+          npm test -- \
+            --coverage \
+            --coverageReporters=html \
+            --coverageReporters=lcov \
+            --coverageReporters=text
         env:
           CI: true
 
-      - name: Upload test report artifact
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-report
-          path: backend/test-report/index.html
-          retention-days: 30
+      # DEBUG: show generated coverage files
+      - name: Debug coverage files
+        run: ls -R coverage
 
-      - name: Upload coverage report
+      # Upload FULL coverage folder
+      - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
-          path: backend/coverage/lcov.info
+          path: backend/coverage
           retention-days: 30
