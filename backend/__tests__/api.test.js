@@ -353,3 +353,453 @@ describe('Trip Checklist', () => {
     expect(update.body.completed).toBe(true);
   });
 });
+// ── Extra Coverage Tests ─────────────────────────────────────────────────────
+
+describe('Auth Edge Cases', () => {
+  it('rejects invalid token', async () => {
+    const res = await request(app)
+      .get('/auth/me')
+      .set('Authorization', 'Bearer invalid_token');
+
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects weak password on register', async () => {
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        email: 'weak@tripmate.app',
+        username: 'Weak',
+        phone: '+84909999999',
+        password: '123',
+      });
+
+    expect([400, 422]).toContain(res.status);
+  });
+
+  it('rejects login with missing credentials', async () => {
+    const res = await request(app)
+      .post('/auth/login')
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('Trip Error Cases', () => {
+  let token;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'edge@tripmate.app',
+      phone: '+84908888888',
+    });
+
+    token = reg.token;
+  });
+
+  it('returns 404 for non-existent trip', async () => {
+    const fakeId = new mongoose.Types.ObjectId();
+
+    const res = await request(app)
+      .get(`/trips/${fakeId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects unauthorized trip access', async () => {
+    const res = await request(app)
+      .get('/trips');
+
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects adding expense without amount', async () => {
+    const trip = await request(app)
+      .post('/trips')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Expense Error Trip' });
+
+    const tripId = trip.body.id;
+
+    const res = await request(app)
+      .post(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Invalid Expense',
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects checklist update with invalid item', async () => {
+    const trip = await request(app)
+      .post('/trips')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Checklist Error Trip' });
+
+    const tripId = trip.body.id;
+    const fakeItemId = new mongoose.Types.ObjectId();
+
+    const res = await request(app)
+      .patch(`/trips/${tripId}/checklist/${fakeItemId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ completed: true });
+
+    expect([400, 404]).toContain(res.status);
+  });
+});
+
+describe('Notifications Routes', () => {
+  let token;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'notify@tripmate.app',
+      phone: '+84907777777',
+    });
+
+    token = reg.token;
+  });
+
+  it('gets notifications list', async () => {
+    const res = await request(app)
+      .get('/notifications')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('marks all notifications as read', async () => {
+    const res = await request(app)
+      .patch('/notifications/read-all')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect([200, 204]).toContain(res.status);
+  });
+});
+// ───────────────── EXTRA COVERAGE TESTS ─────────────────
+
+describe('Unauthorized Access', () => {
+  it('rejects GET /trips without token', async () => {
+    const res = await request(app).get('/trips');
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects POST /trips without token', async () => {
+    const res = await request(app)
+      .post('/trips')
+      .send({ name: 'Unauthorized Trip' });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects GET /auth/me with invalid token', async () => {
+    const res = await request(app)
+      .get('/auth/me')
+      .set('Authorization', 'Bearer invalidtoken');
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('Register Validation Coverage', () => {
+  it('rejects invalid email', async () => {
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        email: 'bad-email',
+        username: 'Bad',
+        phone: '+84901111111',
+        password: 'Password@123',
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('rejects weak password', async () => {
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        email: 'weak@tripmate.app',
+        username: 'Weak',
+        phone: '+84901111112',
+        password: '123',
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('rejects duplicate phone', async () => {
+    await registerAndLogin({
+      email: 'dup-phone1@tripmate.app',
+      phone: '+84908888888',
+    });
+
+    const res = await request(app)
+      .post('/auth/register')
+      .send({
+        email: 'dup-phone2@tripmate.app',
+        username: 'Dup',
+        phone: '+84908888888',
+        password: 'Password@123',
+      });
+
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('Login Validation Coverage', () => {
+  it('rejects missing password', async () => {
+    const res = await request(app)
+      .post('/auth/login')
+      .send({
+        emailOrPhone: 'x@x.com',
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('rejects non-existing user', async () => {
+    const res = await request(app)
+      .post('/auth/login')
+      .send({
+        emailOrPhone: 'nouser@tripmate.app',
+        password: 'Password@123',
+      });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('Trip Validation Coverage', () => {
+  let token;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'validation@tripmate.app',
+      phone: '+84907777777',
+    });
+
+    token = reg.token;
+  });
+
+  it('rejects invalid trip id', async () => {
+    const res = await request(app)
+      .get('/trips/invalid-id')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect([400, 404]).toContain(res.status);
+  });
+
+  it('rejects update non-existing trip', async () => {
+    const res = await request(app)
+      .patch('/trips/665f1b2c1111111111111111')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Nothing' });
+
+    expect([404, 400]).toContain(res.status);
+  });
+
+  it('rejects delete non-existing trip', async () => {
+    const res = await request(app)
+      .delete('/trips/665f1b2c1111111111111111')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect([404, 400]).toContain(res.status);
+  });
+});
+
+describe('Trip Member Branch Coverage', () => {
+  let token;
+  let tripId;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'memberbranch@tripmate.app',
+      phone: '+84906666666',
+    });
+
+    token = reg.token;
+
+    const trip = await request(app)
+      .post('/trips')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Branch Trip' });
+
+    tripId = trip.body.id;
+  });
+
+  it('rejects adding member without phone', async () => {
+    const res = await request(app)
+      .post(`/trips/${tripId}/members`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('rejects invalid member phone', async () => {
+    const res = await request(app)
+      .post(`/trips/${tripId}/members`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        phone: 'abc',
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe('Trip Activity Branch Coverage', () => {
+  let token;
+  let tripId;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'activitybranch@tripmate.app',
+      phone: '+84905555555',
+    });
+
+    token = reg.token;
+
+    const trip = await request(app)
+      .post('/trips')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Activity Branch Trip' });
+
+    tripId = trip.body.id;
+  });
+
+  it('rejects activity without name', async () => {
+    const res = await request(app)
+      .post(`/trips/${tripId}/activities`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        date: '01/01/2025',
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('gets empty activities list', async () => {
+    const res = await request(app)
+      .get(`/trips/${tripId}/activities`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});
+
+describe('Expense Branch Coverage', () => {
+  let token;
+  let tripId;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'expensebranch@tripmate.app',
+      phone: '+84904444444',
+    });
+
+    token = reg.token;
+
+    const trip = await request(app)
+      .post('/trips')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Expense Branch Trip' });
+
+    tripId = trip.body.id;
+  });
+
+  it('rejects expense without amount', async () => {
+    const res = await request(app)
+      .post(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Expense',
+      });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('gets empty expense report', async () => {
+    const res = await request(app)
+      .get(`/trips/${tripId}/expense-report`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('Checklist Branch Coverage', () => {
+  let token;
+  let tripId;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'checkbranch@tripmate.app',
+      phone: '+84903333333',
+    });
+
+    token = reg.token;
+
+    const trip = await request(app)
+      .post('/trips')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Checklist Branch Trip' });
+
+    tripId = trip.body.id;
+  });
+
+  it('rejects checklist item without name', async () => {
+    const res = await request(app)
+      .post(`/trips/${tripId}/checklist`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('rejects updating invalid checklist item', async () => {
+    const res = await request(app)
+      .patch(`/trips/${tripId}/checklist/665f1b2c1111111111111111`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        completed: true,
+      });
+
+    expect([400, 404]).toContain(res.status);
+  });
+});
+
+describe('Users & Notifications Coverage', () => {
+  let token;
+
+  beforeEach(async () => {
+    const reg = await registerAndLogin({
+      email: 'userscoverage@tripmate.app',
+      phone: '+84902222222',
+    });
+
+    token = reg.token;
+  });
+
+  it('gets users profile/list endpoint', async () => {
+    const res = await request(app)
+      .get('/users')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect([200, 404]).toContain(res.status);
+  });
+
+  it('gets notifications endpoint', async () => {
+    const res = await request(app)
+      .get('/notifications')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect([200, 404]).toContain(res.status);
+  });
+});
