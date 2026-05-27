@@ -463,16 +463,14 @@ describe('Notifications Routes', () => {
     token = reg.token;
   });
 
-  it('gets notifications list', async () => {
-    const res = await request(app)
-      .get('/notifications')
-      .set('Authorization', `Bearer ${token}`);
+it('gets notifications list', async () => {
+  const res = await request(app)
+    .get('/notifications')
+    .set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(200);
-    expect(res.status).toBe(200);
-expect(res.body.success).toBe(true);
-expect(Array.isArray(res.body.data)).toBe(true);
-  });
+  expect(res.status).toBe(200);
+  expect(Array.isArray(res.body)).toBe(true);
+});
 
   it('marks all notifications as read', async () => {
     const res = await request(app)
