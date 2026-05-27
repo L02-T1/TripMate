@@ -1,7 +1,7 @@
 {
   "name": "tripmate-backend",
   "version": "1.0.0",
-  "description": "TripMate REST API \u2013 MongoDB/Mongoose backend",
+  "description": "TripMate REST API – MongoDB/Mongoose backend",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -22,14 +22,14 @@
     "mongodb": "^7.2.0",
     "mongoose": "^8.4.0",
     "morgan": "^1.10.0",
+    "resend": "^3.2.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "winston": "^3.13.0",
-    "resend": "^3.2.0"
+    "winston": "^3.13.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "mongodb-memory-server": "^10.0.0",
+    "mongodb-memory-server": "^9.1.8",
     "nodemon": "^3.1.4",
     "supertest": "^7.0.0"
   },

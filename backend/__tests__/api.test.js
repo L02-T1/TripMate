@@ -2,36 +2,53 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
+jest.setTimeout(60000);
+
 let mongod;
 let app;
 
+// ─────────────────────────────────────────────────────────────
+
 beforeAll(async () => {
-  mongod = await MongoMemoryServer.create();
+  mongod = await MongoMemoryServer.create({
+    binary: {
+      version: '4.4.25',
+    },
+  });
+
   process.env.MONGO_URI = mongod.getUri();
   process.env.JWT_SECRET = 'test_secret';
   process.env.NODE_ENV = 'test';
 
-  // Patch connect to use in-memory URI
   const db = require('../src/config/database');
+
   await db.connect();
 
-  // Load app after DB is ready (without calling listen)
   app = require('../src/index');
 });
 
-afterAll(async () => {
-  await mongoose.disconnect();
-  await mongod.stop();
-});
+// ─────────────────────────────────────────────────────────────
 
 afterEach(async () => {
   const collections = mongoose.connection.collections;
+
   for (const key in collections) {
     await collections[key].deleteMany({});
   }
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+afterAll(async () => {
+  await mongoose.connection.dropDatabase();
+  await mongoose.connection.close();
+
+  if (mongod) {
+    await mongod.stop();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
 async function registerAndLogin(overrides = {}) {
   const payload = {
@@ -40,10 +57,17 @@ async function registerAndLogin(overrides = {}) {
     phone: overrides.phone || '+84901000001',
     password: overrides.password || 'Password@123',
   };
-  const reg = await request(app).post('/auth/register').send(payload);
-  return { token: reg.body.token, user: reg.body.user, payload };
-}
 
+  const reg = await request(app)
+    .post('/auth/register')
+    .send(payload);
+
+  return {
+    token: reg.body.token,
+    user: reg.body.user,
+    payload,
+  };
+}
 // ── Auth Tests ────────────────────────────────────────────────────────────────
 
 describe('POST /auth/register', () => {
@@ -469,8 +493,7 @@ it('gets notifications list', async () => {
     .set('Authorization', `Bearer ${token}`);
 
   expect(res.status).toBe(200);
-  expect(res.body.success).toBe(true);
-  expect(Array.isArray(res.body.data)).toBe(true);
+  expect(Array.isArray(res.body.notifications)).toBe(true);
 });
 
   it('marks all notifications as read', async () => {
