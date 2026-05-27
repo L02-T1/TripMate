@@ -243,48 +243,90 @@ exports.joinTrip = async (req, res) => {
 exports.addMember = async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return res.status(400).json({ error: 'Số điện thoại là bắt buộc' });
 
-    const trip = await Trip.findOne({ _id: req.params.id, deletedAt: null });
-    if (!trip) return res.status(404).json({ error: 'Chuyến đi không tồn tại' });
+    if (!phone) {
+      return res.status(400).json({
+        error: 'Số điện thoại là bắt buộc',
+      });
+    }
+
+    // Validate phone number
+    const phoneRegex = /^\+?[0-9]{8,15}$/;
+
+    if (!phoneRegex.test(phone)) {
+      return res.status(400).json({
+        error: 'Số điện thoại không hợp lệ',
+      });
+    }
+
+    const trip = await Trip.findOne({
+      _id: req.params.id,
+      deletedAt: null,
+    });
+
+    if (!trip) {
+      return res.status(404).json({
+        error: 'Chuyến đi không tồn tại',
+      });
+    }
 
     // Permission: only leader can add members
-    const caller = trip.members.find(m => String(m.userId) === String(req.userId));
+    const caller = trip.members.find(
+      (m) => String(m.userId) === String(req.userId)
+    );
+
     if (!caller || caller.role !== 'leader') {
-      return res.status(403).json({ error: 'Chỉ trưởng nhóm mới có thể thêm thành viên' });
+      return res.status(403).json({
+        error: 'Chỉ trưởng nhóm mới có thể thêm thành viên',
+      });
     }
 
     // Duplicate check
-    if (trip.members.some(m => m.phone === phone)) {
-      return res.status(409).json({ error: 'Số điện thoại này đã là thành viên' });
+    if (trip.members.some((m) => m.phone === phone)) {
+      return res.status(409).json({
+        error: 'Số điện thoại này đã là thành viên',
+      });
     }
 
     const found = await User.findByPhone(phone);
+
     const newMember = {
-      userId:   found?._id || null,
-      name:     found?.username || phone,
+      userId: found?._id || null,
+      name: found?.username || phone,
       phone,
-      role:     'member',
-      initials: found ? getInitials(found.username) : phone.slice(-2),
+      role: 'member',
+      initials: found
+        ? getInitials(found.username)
+        : phone.slice(-2),
     };
+
     trip.members.push(newMember);
+
     await trip.save();
 
     if (found) {
       await notify({
-        userId:  found._id,
-        type:    'TRIP_INVITE',
-        title:   'Bạn được thêm vào chuyến đi',
+        userId: found._id,
+        type: 'TRIP_INVITE',
+        title: 'Bạn được thêm vào chuyến đi',
         message: `Bạn đã được thêm vào "${trip.name}"`,
-        tripId:  trip._id,
+        tripId: trip._id,
       });
     }
 
-    logger.info(`addMember: tripId=${trip._id} phone=${phone}`);
-    res.status(201).json(trip.members[trip.members.length - 1]);
+    logger.info(
+      `addMember: tripId=${trip._id} phone=${phone}`
+    );
+
+    res.status(201).json(
+      trip.members[trip.members.length - 1]
+    );
   } catch (err) {
     logger.error('addMember error:', err.message);
-    res.status(500).json({ error: 'Lỗi hệ thống' });
+
+    res.status(500).json({
+      error: 'Lỗi hệ thống',
+    });
   }
 };
 
