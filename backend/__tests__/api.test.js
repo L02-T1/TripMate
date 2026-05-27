@@ -12,7 +12,7 @@ let app;
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create({
     binary: {
-      version: '4.4.25',
+       version: '7.0.14',
     },
   });
 
