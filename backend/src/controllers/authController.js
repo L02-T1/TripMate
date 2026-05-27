@@ -161,27 +161,96 @@ exports.deleteAccount = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email la bat buoc' });
+    if (!email) return res.status(400).json({ error: 'Email duoc yeu cau' });
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (user) {
-      // Generate a simple reset token (in production: send via email service)
       const crypto = require('crypto');
+
+      // 1. Tao reset token
       const resetToken = crypto.randomBytes(32).toString('hex');
       user.resetPasswordToken   = crypto.createHash('sha256').update(resetToken).digest('hex');
-      user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 gio
       await user.save({ validateBeforeSave: false });
 
-      // TODO: plug in an email service (nodemailer, SendGrid, Resend...)
-      // For now: log the token so it can be used in development
-      logger.info(`[Auth] Password reset token for ${email}: ${resetToken}`);
+      // 2. Gui email qua Resend
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8081';
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+
+      try {
+        const { Resend } = require('resend');
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        await resend.emails.send({
+          from: 'TripMate <onboarding@resend.dev>',
+          to: email,
+          subject: 'Dat lai mat khau TripMate',
+          html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;">
+              <h2 style="color:#1B4F8A">TripMate</h2>
+              <h3>Ban da yeu cau dat lai mat khau</h3>
+              <p style="color:#6B7280">Nhan vao nut ben duoi de dat lai mat khau. Link se het han sau <strong>1 gio</strong>.</p>
+              <a href="${resetUrl}"
+                style="display:inline-block;background:#1B4F8A;color:#fff;padding:14px 32px;
+                       border-radius:10px;text-decoration:none;font-weight:700;margin:24px 0;">
+                Dat lai mat khau
+              </a>
+              <p style="color:#9CA3AF;font-size:13px;">Neu ban khong yeu cau viec nay, hay bo qua email nay.</p>
+              <hr style="border:none;border-top:1px solid #F3F4F6;margin:24px 0"/>
+              <p style="color:#9CA3AF;font-size:12px;">TripMate - Travel Smart, Spend Wisely</p>
+            </div>
+          `,
+        });
+
+        logger.info(`[Auth] Password reset email sent to: ${email}`);
+      } catch (emailErr) {
+        logger.error('[Auth] forgotPassword email error:', emailErr.message);
+        // Khong fail request neu email loi — van tra 200
+      }
     }
 
-    // Always return 200 — never reveal whether email exists (security)
+    // Luon tra 200 — khong tiet lo email co ton tai hay khong (bao mat)
     res.json({ message: 'Neu email ton tai, ban se nhan duoc huong dan trong vai phut.' });
   } catch (err) {
     logger.error('[Auth] forgotPassword error:', err.message);
+    res.status(500).json({ error: 'Loi he thong' });
+  }
+};
+
+// POST /auth/reset-password  (dung token tu email)
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, email, newPassword } = req.body;
+    if (!token || !email || !newPassword) {
+      return res.status(400).json({ error: 'Thieu thong tin' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Mat khau moi phai it nhat 6 ky tu' });
+    }
+
+    const crypto = require('crypto');
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+      resetPasswordToken:   hashedToken,
+      resetPasswordExpires: { $gt: new Date() },
+    }).select('+password +resetPasswordToken +resetPasswordExpires');
+
+    if (!user) {
+      return res.status(400).json({ error: 'Token khong hop le hoac da het han' });
+    }
+
+    user.password             = newPassword;  // bcrypt hash tu dong qua pre-save hook
+    user.resetPasswordToken   = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    logger.info(`[Auth] Password reset successful for: ${email}`);
+    res.json({ message: 'Mat khau da duoc cap nhat thanh cong' });
+  } catch (err) {
+    logger.error('[Auth] resetPassword error:', err.message);
     res.status(500).json({ error: 'Loi he thong' });
   }
 };
