@@ -469,7 +469,8 @@ it('gets notifications list', async () => {
     .set('Authorization', `Bearer ${token}`);
 
   expect(res.status).toBe(200);
-  expect(Array.isArray(res.body)).toBe(true);
+  expect(res.body.success).toBe(true);
+  expect(Array.isArray(res.body.data)).toBe(true);
 });
 
   it('marks all notifications as read', async () => {
