@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, ScrollView,
+  Image, Alert, KeyboardAvoidingView, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,9 +25,11 @@ function FieldError({ msg }: { msg?: string }) {
 function Logo() {
   return (
     <View style={styles.logoArea}>
-      <View style={styles.logoCircle}>
-        <Ionicons name="navigate" size={34} color="#1B4F8A" />
-      </View>
+      <Image 
+        source={require('../../assets/icon.png')} // Đường dẫn tới file ảnh của bạn
+        style={styles.logoImage}
+        resizeMode="contain"
+      />
       <Text style={styles.appName}>TripMate</Text>
       <Text style={styles.tagline}>TRAVEL SMART, SPEND WISELY</Text>
     </View>
@@ -226,7 +228,11 @@ const styles = StyleSheet.create({
   },
   appName: { fontSize: 28, fontWeight: '800', color: '#1B4F8A', letterSpacing: 1 },
   tagline: { fontSize: 10, color: '#9CA3AF', letterSpacing: 2.5, marginTop: 4, fontWeight: '600' },
-
+logoImage: {
+    width: 80,   // Điều chỉnh kích thước tùy ý
+    height: 80,
+    marginBottom: 10,
+  },
   // Form
   form: { width: '100%', gap: 12 },
   inputWrap: {

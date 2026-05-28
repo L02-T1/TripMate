@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform, ScrollView,
+  Image, Alert, KeyboardAvoidingView, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -142,12 +142,13 @@ export default function SignUpScreen() {
         >
           {/* Logo */}
           <View style={styles.logoArea}>
-            <View style={styles.logoCircle}>
-              <Ionicons name="navigate" size={34} color="#1B4F8A" />
-            </View>
-            <Text style={styles.appName}>TripMate</Text>
-            <Text style={styles.tagline}>TRAVEL SMART, SPEND WISELY</Text>
-          </View>
+  <Image 
+    source={require('../../assets/icon.png')} // Chỉnh đường dẫn cho đúng với vị trí file của bạn
+    style={styles.logoImage} 
+  />
+  <Text style={styles.appName}>TripMate</Text>
+  <Text style={styles.tagline}>TRAVEL SMART, SPEND WISELY</Text>
+</View>
 
           <View style={styles.form}>
             {/* Email */}
@@ -287,7 +288,29 @@ const styles = StyleSheet.create({
     flexGrow: 1, alignItems: 'center',
     paddingHorizontal: 28, paddingTop: 28, paddingBottom: 24,
   },
-  logoArea: { alignItems: 'center', marginBottom: 36 },
+  logoArea: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  
+  // Định nghĩa style cho ảnh logo mới
+  logoImage: {
+    width: 80,      // Kích thước chiều rộng
+    height: 80,     // Kích thước chiều cao
+    marginBottom: 10,
+    resizeMode: 'contain', // Đảm bảo ảnh hiển thị đúng tỷ lệ
+  },
+  
+  appName: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  tagline: {
+    fontSize: 12,
+    color: '#6B7280',
+    letterSpacing: 1,
+  },
   logoCircle: {
     width: 72, height: 72, borderRadius: 36,
     backgroundColor: '#EFF6FF',
@@ -295,8 +318,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     shadowColor: '#1B4F8A', shadowOpacity: 0.12, shadowRadius: 12, elevation: 4,
   },
-  appName: { fontSize: 26, fontWeight: '800', color: '#1B4F8A', letterSpacing: 1 },
-  tagline: { fontSize: 10, color: '#9CA3AF', letterSpacing: 2.5, marginTop: 3, fontWeight: '600' },
 
   form: { width: '100%', gap: 12 },
   inputWrap: {
