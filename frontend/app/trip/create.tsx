@@ -3,30 +3,18 @@ import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator, Dimensions, KeyboardAvoidingView,
+  Linking, Modal, Platform, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
-import { logAction, logError, logInfo, logWarn, formatErrorForAlert } from '../../utils/logger';
+import { logAction, logError, logInfo, logWarn } from '../../utils/logger';
 
 const TAG = 'CreateTrip';
 const { width, height } = Dimensions.get('window');
 
-// NOTE: Thay YOUR_GOOGLE_PLACES_API_KEY bằng key thật của bạn
 // Lấy tại: https://console.cloud.google.com → Enable "Places API" + "Maps JavaScript API"
-const GOOGLE_PLACES_API_KEY = 'YOUR_GOOGLE_PLACES_API_KEY';
 
 const SUGGESTED = [
   'Đà Lạt', 'Phú Quốc', 'Hội An', 'Huế', 'Sa Pa',
@@ -73,18 +61,7 @@ function MapPickerModal({ visible, onClose, onSelectPlace, initialQuery }: {
   const [searchText, setSearchText] = useState(initialQuery || '');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showMap, setShowMap] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Build Google Maps Embed URL for iframe (web only)
-  const mapEmbedUrl = () => {
-    const q = encodeURIComponent(searchText || 'Vietnam');
-    if (GOOGLE_PLACES_API_KEY !== 'YOUR_GOOGLE_PLACES_API_KEY') {
-      return `https://www.google.com/maps/embed/v1/search?key=${GOOGLE_PLACES_API_KEY}&q=${q}&language=vi`;
-    }
-    // Without API key - fallback to basic embed (no key required for basic view)
-    return `https://maps.google.com/maps?q=${q}&output=embed&z=13`;
-  };
 
   const searchPlaces = async (text: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -92,24 +69,38 @@ function MapPickerModal({ visible, onClose, onSelectPlace, initialQuery }: {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        if (GOOGLE_PLACES_API_KEY !== 'YOUR_GOOGLE_PLACES_API_KEY') {
-          const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&language=vi&components=country:vn&key=${GOOGLE_PLACES_API_KEY}`;
-          const res  = await fetch(url);
-          const data = await res.json();
-          if (data.status === 'OK') {
-            setSuggestions(data.predictions);
-          } else {
-            setSuggestions(getLocalSuggestions(text));
-          }
+        // Nominatim OpenStreetMap — free, no API key needed
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&limit=6&accept-language=vi&countrycodes=vn,la,kh,th,sg,my`;
+        const res  = await fetch(url, {
+          headers: { 'User-Agent': 'TripMateApp/1.0 (contact@tripmate.app)' },
+        });
+        const data: any[] = await res.json();
+        if (data.length > 0) {
+          // Map Nominatim format → same shape the rest of the code expects
+          const preds = data.map(item => {
+            const parts = item.display_name.split(', ');
+            return {
+              place_id: item.place_id?.toString() || item.display_name,
+              description: item.display_name,
+              structured_formatting: {
+                main_text: parts[0],
+                secondary_text: parts.slice(1).join(', '),
+              },
+              lat: item.lat,
+              lon: item.lon,
+            };
+          });
+          setSuggestions(preds);
         } else {
           setSuggestions(getLocalSuggestions(text));
         }
       } catch {
+        // Network error → fallback to local list
         setSuggestions(getLocalSuggestions(text));
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, 600); // 600ms debounce — Nominatim rate limit: max 1 req/s
   };
 
   const getLocalSuggestions = (text: string) => {
@@ -129,7 +120,6 @@ function MapPickerModal({ visible, onClose, onSelectPlace, initialQuery }: {
     onSelectPlace(name, address);
     setSearchText('');
     setSuggestions([]);
-    setShowMap(false);
     onClose();
   };
 
@@ -151,14 +141,11 @@ function MapPickerModal({ visible, onClose, onSelectPlace, initialQuery }: {
             </TouchableOpacity>
             <Text style={mp.title}>🗺️ Chọn địa điểm</Text>
             <TouchableOpacity
-              style={[mp.toggleMapBtn, showMap && mp.toggleMapBtnActive]}
-              onPress={() => setShowMap(v => !v)}
+              style={mp.toggleMapBtn}
+              onPress={openExternalMaps}
             >
-              <Ionicons name={showMap ? 'list-outline' : 'map-outline'} size={16}
-                color={showMap ? '#fff' : '#1B4F8A'} />
-              <Text style={[mp.toggleMapTxt, showMap && {color:'#fff'}]}>
-                {showMap ? 'Danh sách' : 'Bản đồ'}
-              </Text>
+              <Ionicons name={'map-outline'} size={16} color={'#1B4F8A'} />
+              <Text style={mp.toggleMapTxt}>Mở Maps</Text>
             </TouchableOpacity>
           </View>
 
@@ -171,9 +158,13 @@ function MapPickerModal({ visible, onClose, onSelectPlace, initialQuery }: {
                 placeholder="Nhập tên thành phố, địa điểm..."
                 placeholderTextColor="#C0C8D0"
                 value={searchText}
-                onChangeText={t => { setSearchText(t); searchPlaces(t); setShowMap(false); }}
+                onChangeText={t => { setSearchText(t); searchPlaces(t); }}
                 returnKeyType="search"
-                onSubmitEditing={() => { if (searchText.trim()) setShowMap(true); }}
+                onSubmitEditing={() => {
+                  if (searchText.trim()) {
+                    handleSelect({ place_id: '__custom__', description: searchText, structured_formatting: { main_text: searchText, secondary_text: 'Địa điểm tùy chọn' } });
+                  }
+                }}
                 autoFocus
               />
               {loading && <ActivityIndicator size="small" color="#1B4F8A" />}
@@ -185,45 +176,8 @@ function MapPickerModal({ visible, onClose, onSelectPlace, initialQuery }: {
             </View>
           </View>
 
-          {/* Map View (web iframe or native button) */}
-          {showMap && (
-            <View style={mp.mapContainer}>
-              {Platform.OS === 'web' ? (
-                <View style={mp.mapFrame}>
-                  {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-                  {/* @ts-ignore web-only */}
-                  <iframe
-                    src={mapEmbedUrl()}
-                    style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
-                    title="Google Maps"
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                </View>
-              ) : (
-                <View style={mp.mapNativeBox}>
-                  <Ionicons name="map" size={40} color="#1B4F8A" />
-                  <Text style={mp.mapNativeTitle}>Xem trên Google Maps</Text>
-                  <Text style={mp.mapNativeSub}>Mở app Google Maps để tìm và sao chép tên địa điểm</Text>
-                  <TouchableOpacity style={mp.mapNativeBtn} onPress={openExternalMaps}>
-                    <Ionicons name="open-outline" size={16} color="#fff" />
-                    <Text style={mp.mapNativeBtnText}>Mở Google Maps</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              {/* Confirm from map - manual entry */}
-              {Platform.OS === 'web' && searchText.trim() && (
-                <TouchableOpacity style={mp.confirmFromMapBtn}
-                  onPress={() => handleSelect({ place_id: '__map__', description: searchText, structured_formatting: { main_text: searchText, secondary_text: 'Chọn từ bản đồ' } })}>
-                  <Ionicons name="location" size={16} color="#fff" />
-                  <Text style={mp.confirmFromMapTxt}>Chọn "{searchText}" từ bản đồ này</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
           {/* Suggestions list */}
-          {!showMap && (
+          {(
             <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
               {suggestions.length > 0
                 ? suggestions.map((p, i) => (
@@ -324,7 +278,7 @@ function MemberSearchModal({ visible, onClose, onAdd, existingPhones }: {
       const result = findUser ? await findUser(q) : null;
       if (result) { setFoundUser(result); }
       else { setNotFound(true); }
-    } catch (e: any) { logWarn(TAG, 'search/place error', e); setNotFound(true); }
+    } catch { setNotFound(true); }
     finally { setSearching(false); }
   };
 
@@ -452,7 +406,7 @@ export default function CreateTripScreen() {
       setSuccess(true);
     } catch (err: any) {
       logError(TAG, 'Create error', err);
-      Alert.alert('Không thể tạo chuyến đi', formatErrorForAlert(err));
+      alert(err.message || 'Không thể tạo chuyến đi');
     } finally {
       setLoading(false);
     }

@@ -26,7 +26,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tripmate.app"
+      "bundleIdentifier": "com.tripmate.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "web": {
       "bundler": "metro",
