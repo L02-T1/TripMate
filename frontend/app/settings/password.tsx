@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
+import { logError, formatErrorForAlert } from '../../utils/logger';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
@@ -98,18 +99,10 @@ export default function ChangePasswordScreen() {
           result.message
         );
       }
-    } catch (error) {
-      console.log(
-        'Change password screen error:',
-        error
-      );
-
+    } catch (error: any) {
+      logError('Password', 'changePassword error', error);
       setLoading(false);
-
-      Alert.alert(
-        'Lỗi',
-        'Có lỗi xảy ra'
-      );
+      Alert.alert('Lỗi đổi mật khẩu', formatErrorForAlert(error));
     }
   };
 

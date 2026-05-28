@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
+import { logError, formatErrorForAlert } from '../../utils/logger';
 
 const CODE_LENGTH = 6;
 
@@ -48,6 +49,7 @@ export default function JoinTripScreen() {
         setError('Mã mời không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại.');
       }
     } catch (e: any) {
+      logError('Join', 'joinTrip error', e);
       setLoading(false);
       setError('Có lỗi xảy ra. Vui lòng thử lại.');
     }

@@ -2,12 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
+  Alert, KeyboardAvoidingView, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
 import { isValidEmail, isValidPhone } from '../../utils/helpers';
+import { formatErrorForAlert, logError } from '../../utils/logger';
 
 // ─── Inline field error component ────────────────────────────────────────────
 function FieldError({ msg }: { msg?: string }) {
@@ -88,40 +89,10 @@ export default function SignInScreen() {
         setErrors({ emailOrPhone: 'Email/số điện thoại hoặc mật khẩu không đúng' });
       }
     } catch (e: any) {
-      console.error('[SignIn] Unexpected error:', e?.message);
-      Alert.alert('Lỗi', 'Đã xảy ra lỗi. Vui lòng thử lại.');
+      logError('SignIn', 'Unexpected error', e);
+      Alert.alert('Lỗi đăng nhập', formatErrorForAlert(e));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const [showForgotModal, setShowForgotModal] = React.useState(false);
-  const [forgotEmail, setForgotEmail] = React.useState('');
-  const [forgotLoading, setForgotLoading] = React.useState(false);
-
-  const handleForgotPassword = () => {
-    setForgotEmail(form.emailOrPhone.includes('@') ? form.emailOrPhone : '');
-    setShowForgotModal(true);
-  };
-
-  const submitForgotPassword = async () => {
-    const trimmed = forgotEmail.trim();
-    if (!trimmed) { Alert.alert('', 'Vui lòng nhập email'); return; }
-    setForgotLoading(true);
-    try {
-      const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://tripmate-production-1680.up.railway.app';
-      await fetch(`${BASE_URL}/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
-      });
-      setShowForgotModal(false);
-      setForgotEmail('');
-      Alert.alert('📧 Email đã gửi', `Nếu ${trimmed} tồn tại, bạn sẽ nhận hướng dẫn đặt lại mật khẩu trong vài phút.`);
-    } catch {
-      Alert.alert('Lỗi kết nối', 'Không thể kết nối tới server.');
-    } finally {
-      setForgotLoading(false);
     }
   };
 
@@ -192,7 +163,7 @@ export default function SignInScreen() {
               <FieldError msg={errors.password} />
             </View>
 
-            <TouchableOpacity style={styles.forgotRow} onPress={handleForgotPassword}>
+            <TouchableOpacity style={styles.forgotRow} onPress={() => console.log('[SignIn] Forgot password tapped')}>
               <Text style={styles.forgotText}>Forgot password?</Text>
             </TouchableOpacity>
 
@@ -230,41 +201,6 @@ export default function SignInScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Forgot Password Modal */}
-      <Modal visible={showForgotModal} transparent animationType="fade" onRequestClose={() => setShowForgotModal(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, gap: 16 }}>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111' }}>🔑 Quên mật khẩu</Text>
-            <Text style={{ fontSize: 13, color: '#6B7280' }}>Nhập email đăng ký để nhận hướng dẫn đặt lại mật khẩu.</Text>
-            <TextInput
-              style={{ borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: '#111', backgroundColor: '#F9FAFB' }}
-              placeholder="email@example.com"
-              placeholderTextColor="#C0C8D0"
-              value={forgotEmail}
-              onChangeText={setForgotEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1.5, borderColor: '#E5E7EB', alignItems: 'center' }}
-                onPress={() => { setShowForgotModal(false); setForgotEmail(''); }}
-              >
-                <Text style={{ fontSize: 15, color: '#6B7280', fontWeight: '600' }}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#1B4F8A', alignItems: 'center', opacity: forgotLoading ? 0.6 : 1 }}
-                onPress={submitForgotPassword}
-                disabled={forgotLoading}
-              >
-                <Text style={{ fontSize: 15, color: '#fff', fontWeight: '700' }}>{forgotLoading ? 'Đang gửi...' : 'Gửi'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

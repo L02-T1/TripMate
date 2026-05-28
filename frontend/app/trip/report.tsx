@@ -14,7 +14,10 @@ const CATEGORY_ICONS: Record<string, any> = {
   'Vui chơi': 'game-controller', 'Mua sắm': 'bag-handle', 'Khác': 'pricetag',
 };
 
-function fmt(n: number) { return Math.abs(n).toLocaleString('vi-VN') + ' đ'; }
+function fmt(n: number) {
+  if (!Number.isFinite(n)) return '—';
+  return Math.abs(n).toLocaleString('vi-VN') + ' đ';
+}
 
 export default function ExpenseReportScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -48,14 +51,40 @@ export default function ExpenseReportScreen() {
   trip.members.forEach(m => { memberBalance[m.name.split(' ')[0]] = 0; memberPaid[m.name.split(' ')[0]] = 0; });
 
   trip.expenses.forEach(exp => {
+    // paidBy có thể là firstName hoặc id — chuẩn hoá về firstName
+    const paidByName = (() => {
+      if (!exp.paidBy) return null;
+      // Nếu là UUID (không có space, dài > 10 ký tự) → tìm theo id
+      const byId = trip.members.find((m: any) => m.id === exp.paidBy || m._id === exp.paidBy);
+      if (byId) return byId.name.split(' ')[0];
+      // Nếu đã là firstName
+      const byName = trip.members.find((m: any) => m.name.split(' ')[0] === exp.paidBy || m.name === exp.paidBy);
+      if (byName) return byName.name.split(' ')[0];
+      return exp.paidBy; // fallback
+    })();
+
+    if (!paidByName || !memberBalance.hasOwnProperty(paidByName)) return; // skip nếu không tìm thấy
+
     const parts = exp.participants?.length || trip.members.length;
     const share = exp.amount / Math.max(1, parts);
-    memberBalance[exp.paidBy] = (memberBalance[exp.paidBy] || 0) + exp.amount;
-    memberPaid[exp.paidBy] = (memberPaid[exp.paidBy] || 0) + exp.amount;
-    const participantNames = exp.participants?.length
-      ? exp.participants.map(id => trip.members.find(m => m.id === id)?.name.split(' ')[0] || id)
-      : trip.members.map(m => m.name.split(' ')[0]);
-    participantNames.forEach(name => {
+
+    memberBalance[paidByName] = (memberBalance[paidByName] || 0) + exp.amount;
+    memberPaid[paidByName] = (memberPaid[paidByName] || 0) + exp.amount;
+
+    // participants: chuẩn hoá về firstName, lọc bỏ null
+    const participantNames: string[] = exp.participants?.length
+      ? exp.participants
+          .map((id: string) => {
+            const byId = trip.members.find((m: any) => m.id === id || m._id === id);
+            if (byId) return byId.name.split(' ')[0];
+            const byName = trip.members.find((m: any) => m.name.split(' ')[0] === id || m.name === id);
+            if (byName) return byName.name.split(' ')[0];
+            return null;
+          })
+          .filter((n: string | null): n is string => !!n && memberBalance.hasOwnProperty(n))
+      : trip.members.map((m: any) => m.name.split(' ')[0]);
+
+    participantNames.forEach((name: string) => {
       memberBalance[name] = (memberBalance[name] || 0) - share;
     });
   });
@@ -159,11 +188,11 @@ export default function ExpenseReportScreen() {
                 <Text style={s.memberBalPaid}>Đã trả: {fmt(memberPaid[name] || 0)}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={[s.memberBalAmt, { color: bal >= 0 ? '#10B981' : '#EF4444' }]}>
-                  {bal >= 0 ? '+' : ''}{fmt(Math.round(bal))}
+                <Text style={[s.memberBalAmt, { color: !Number.isFinite(bal) ? '#9CA3AF' : bal >= 0 ? '#10B981' : '#EF4444' }]}>
+                  {!Number.isFinite(bal) ? '—' : (bal >= 0 ? '+' : '') + fmt(Math.round(bal))}
                 </Text>
                 <Text style={s.memberBalStatus}>
-                  {Math.abs(bal) < 0.5 ? '✅ Cân bằng' : bal > 0 ? '💚 Được nhận' : '🔴 Cần trả'}
+                  {!Number.isFinite(bal) ? '—' : Math.abs(bal) < 0.5 ? '✅ Cân bằng' : bal > 0 ? '💚 Được nhận' : '🔴 Cần trả'}
                 </Text>
               </View>
             </View>

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
+import { logError, formatErrorForAlert } from '../../utils/logger';
 
 const SettingRow = ({
   icon,
@@ -130,15 +131,10 @@ React.useEffect(() => {
                   'Không thể xoá tài khoản'
                 );
               }
-            } catch (error) {
-              console.log(error);
-
+            } catch (error: any) {
+              logError('Settings', 'deleteAccount error', error);
               setDeleting(false);
-
-              Alert.alert(
-                'Lỗi',
-                'Có lỗi xảy ra khi xoá tài khoản'
-              );
+              Alert.alert('Lỗi xoá tài khoản', formatErrorForAlert(error));
             }
           },
         },
@@ -369,7 +365,8 @@ React.useEffect(() => {
       'Dark mode updated:',
       v
     );
-  } catch (error) {
+  } catch (error: any) {
+    logError('Settings', 'save error', error);
     console.log(
       'Dark mode update error:',
       error

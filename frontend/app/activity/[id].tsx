@@ -40,10 +40,28 @@ function formatMoneyInput(raw: string): string {
   return raw.replace(/\D/g, '');
 }
 
-/**
- * Safe back navigation: go back if history exists, otherwise replace to fallback.
- * Fixes the "GO_BACK was not handled by any navigator" warning.
- */
+const safeGetId = (item: any): string => {
+  if (!item) return '';
+  if (typeof item === 'object') return String(item._id || item.id || '');
+  return String(item);
+};
+
+const normalizeMemberId = (trip: any, value?: any) => {
+  if (!value || !trip?.members?.length) return value ? String(value) : '';
+  const strValue = String(value);
+
+  const exact = trip.members.find((m: Member) => safeGetId(m) === strValue);
+  if (exact) return safeGetId(exact);
+
+  const byName = trip.members.find((m: Member) => m.name === strValue);
+  if (byName) return safeGetId(byName);
+
+  const byFirstName = trip.members.find((m: Member) => m.name.split(' ')[0] === strValue);
+  if (byFirstName) return safeGetId(byFirstName);
+
+  return strValue;
+};
+
 function useSafeBack(fallback: string = '/(tabs)/trips') {
   const router = useRouter();
   return (): void => {
@@ -117,31 +135,68 @@ function TagGroup({
 }
 
 function MemberPicker({
-  label, members, selected, onToggle, single,
+  label,
+  members = [],
+  selected = [],
+  onToggle,
+  single = false,
 }: {
-  label: string; members: Member[]; selected: string[];
-  onToggle: (id: string) => void; single?: boolean;
+  label: string;
+  members: Member[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  single?: boolean;
 }) {
   return (
     <View style={styles.fieldGroup}>
       <SectionLabel text={label} />
+
       <View style={styles.memberGrid}>
-        {members.map((m: Member) => {
-          // single mode (paidBy) uses first name; multi mode (participants) uses id
-          const key = single ? m.name.split(' ')[0] : m.id;
-          const active = selected.includes(key);
+        {members.map((m: Member, index: number) => {
+          const memberId = safeGetId(m) || `member-${index}`;
+          const active = selected.includes(memberId);
+
           return (
             <TouchableOpacity
-              key={m.id}
-              style={[styles.memberChip, active && styles.memberChipActive]}
-              onPress={() => onToggle(key)}
+              key={memberId}
+              style={[
+                styles.memberChip,
+                active && styles.memberChipActive,
+              ]}
+              onPress={() => onToggle(memberId)}
             >
-              <View style={[styles.memberAv, active && { backgroundColor: '#1B4F8A' }]}>
-                <Text style={styles.memberAvText}>{m.initials?.slice(0, 1) || m.name[0]}</Text>
+              <View
+                style={[
+                  styles.memberAv,
+                  active && { backgroundColor: '#1B4F8A' },
+                ]}
+              >
+                <Text style={styles.memberAvText}>
+                  {m.initials?.slice(0, 1) || m.name?.[0] || '?'}
+                </Text>
               </View>
-              <Text style={[styles.memberLabel, active && { color: '#1B4F8A', fontWeight: '700' }]}>
-                {m.name.split(' ')[0]}
+
+              <Text
+                style={[
+                  styles.memberLabel,
+                  active && {
+                    color: '#1B4F8A',
+                    fontWeight: '700',
+                  },
+                ]}
+              >
+                {m.name ? m.name.split(' ')[0] : 'N/A'}
               </Text>
+
+              {active && (
+                <View style={styles.memberCheck}>
+                  <Ionicons
+                    name="checkmark"
+                    size={10}
+                    color="#1B4F8A"
+                  />
+                </View>
+              )}
             </TouchableOpacity>
           );
         })}
@@ -156,8 +211,8 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
   const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addActivity, updateActivity, deleteActivity } = useApp();
   const trip = getTrip(tripId);
-  const existing = trip?.activities.find((a) => a.id === actId);
-  const isNew = actId === 'new';
+  const isNew = !actId || actId === 'new' || actId === 'activity';
+  const existing = isNew ? undefined : trip?.activities.find((a) => safeGetId(a) === actId);
 
   const [form, setForm] = useState({
     name: '', location: '', date: '', time: '',
@@ -169,13 +224,14 @@ function ActivityForm({ tripId, actId }: { tripId: string; actId: string }) {
       setForm({
         name: existing.name, location: existing.location,
         date: existing.date, time: existing.time,
-        type: existing.type || [], participants: existing.participants || [],
+        type: existing.type || [],
+        participants: (existing.participants || []).map((p: any) => safeGetId(p)),
         note: existing.note || '',
       });
     } else if (trip?.members) {
-      setForm(p => ({ ...p, participants: trip.members.map((m: Member) => m.id) }));
+      setForm(p => ({ ...p, participants: trip.members.map((m: Member) => safeGetId(m)) }));
     }
-  }, [actId]);
+  }, [actId, existing, trip]);
 
   const save = async () => {
     if (!form.name.trim()) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên hoạt động'); return; }
@@ -260,8 +316,8 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
   const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addChecklistItem, updateChecklistItem, deleteChecklistItem } = useApp();
   const trip = getTrip(tripId);
-  const existing = trip?.checklist.find((c) => c.id === itemId);
-  const isNew = itemId === 'new';
+  const isNew = !itemId || itemId === 'new' || itemId === 'checklist';
+  const existing = isNew ? undefined : trip?.checklist.find((c) => safeGetId(c) === itemId);
 
   const [form, setForm] = useState({
     name: '', category: 'shared' as 'shared' | 'personal' | 'todo',
@@ -273,13 +329,13 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
       setForm({
         name: existing.name,
         category: existing.category as 'shared' | 'personal' | 'todo',
-        assignee: existing.assignee,
+        assignee: safeGetId(existing.assignee),
         dueDate: existing.dueDate ?? '',
         note: existing.note,
         completed: existing.completed,
       });
     }
-  }, [itemId]);
+  }, [itemId, existing]);
 
   const save = async () => {
     if (!form.name.trim()) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên mục'); return; }
@@ -343,8 +399,9 @@ function ChecklistForm({ tripId, itemId }: { tripId: string; itemId: string }) {
 
         {trip && (
           <MemberPicker label="Người phụ trách" members={trip.members}
-            selected={[form.assignee]} single
-            onToggle={(name: string) => setForm(p => ({ ...p, assignee: name }))} />
+            selected={form.assignee ? [form.assignee] : []} single
+            onToggle={(id: string) => setForm(p => ({ ...p, assignee: id }))} 
+          />
         )}
 
         <View style={styles.fieldGroup}>
@@ -387,61 +444,125 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
   const safeBack = useSafeBack(`/trip/${tripId}`);
   const { getTrip, addExpense, updateExpense, deleteExpense } = useApp();
   const trip = getTrip(tripId);
-  const existing = trip?.expenses.find((e) => e.id === expId);
-  const isNew = expId === 'new';
+  const isNew = !expId || expId === 'new' || expId === 'expense';
+  
+  // Dùng useMemo để tránh việc tạo object 'existing' mới liên tục
+  const existing = React.useMemo(() => 
+    isNew ? undefined : trip?.expenses.find((e) => safeGetId(e) === expId),
+    [trip?.expenses, expId, isNew]
+  );
 
   const [form, setForm] = useState({
     name: '', amount: '', category: 'Ăn uống' as ExpenseCategory, paidBy: '',
     date: '', splitType: 'equal' as 'equal' | 'detail',
     participants: [] as string[],
   });
-  // customAmounts: { [memberId]: amountString }
-  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
+  
+  const [customAmounts, setCustomAmounts] = React.useState<Record<string, string>>({});
+  const [saving, setSaving] = React.useState(false);
 
   useEffect(() => {
+    if (!trip || !trip.members || trip.members.length === 0) return;
+
     if (existing) {
+      const paidById = normalizeMemberId(trip, safeGetId(existing.paidBy));
+      const participantIds = Array.from(
+        new Set((existing.participants || []).map((p: any) => normalizeMemberId(trip, safeGetId(p))).filter(Boolean))
+      );
+
+      // CHẶN UPDATE NẾU DỮ LIỆU ĐÃ ĐÚNG (So sánh nhẹ để tránh re-render thừa)
+      if (form.name === existing.name && form.amount === String(existing.amount)) return;
+
       setForm({
-        name: existing.name, amount: String(existing.amount),
-        category: existing.category, paidBy: existing.paidBy,
-        date: existing.date, splitType: existing.splitType,
-        participants: existing.participants || [],
+        name: existing.name,
+        amount: String(existing.amount),
+        category: existing.category,
+        paidBy: paidById,
+        date: existing.date || '',
+        splitType: existing.splitType || 'equal',
+        participants: participantIds,
       });
-    } else if (trip?.members) {
-      const ids = trip.members.map((m: Member) => m.id);
-      setForm(p => ({
-        ...p,
+
+      if (existing.splits?.length) {
+        const amounts: Record<string, string> = {};
+        existing.splits.forEach((s: any) => {
+          const id = normalizeMemberId(trip, safeGetId(s.memberId));
+          if (id) amounts[id] = String(s.amount);
+        });
+        setCustomAmounts(amounts);
+      }
+    } else if (form.name === '' && form.amount === '') { 
+      // Chỉ set mặc định khi là tạo mới và form đang trống
+      const ids = trip.members.map((m: Member) => safeGetId(m));
+      setForm({
+        name: '', amount: '', category: 'Ăn uống',
+        paidBy: safeGetId(trip.members[0]) || '',
+        date: '', splitType: 'equal',
         participants: ids,
-        paidBy: trip.members[0]?.name.split(' ')[0] || '',
-      }));
-      // Init custom amounts to 0
-      const init: Record<string, string> = {};
-      ids.forEach((id: string) => { init[id] = ''; });
-      setCustomAmounts(init);
+      });
+      setCustomAmounts(ids.reduce((acc, id) => ({ ...acc, [id]: '' }), {}));
     }
-  }, [expId]);
+  }, [existing, trip?.members]);
+
+  const toggleParticipant = (id: string) => {
+    setForm(prev => {
+      const exists = prev.participants.includes(id);
+      const updatedParticipants = exists
+        ? prev.participants.filter(p => p !== id)
+        : Array.from(new Set([...prev.participants, id]));
+
+      setCustomAmounts(prevAmounts => ({
+        ...prevAmounts,
+        [id]: exists ? '' : (prevAmounts[id] || ''),
+      }));
+
+      return {
+        ...prev,
+        participants: updatedParticipants,
+      };
+    });
+  };
 
   const save = async () => {
     if (!form.name.trim()) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên khoản chi'); return; }
     if (!form.amount || isNaN(Number(form.amount))) { Alert.alert('Thiếu thông tin', 'Vui lòng nhập số tiền hợp lệ'); return; }
-    // Build splits for detail mode
-    const splits = form.splitType === 'detail'
-      ? form.participants.map(id => {
-          const member = trip?.members.find((m: Member) => m.id === id);
-          return {
-            memberId: id,
-            memberName: member?.name.split(' ')[0] || id,
-            amount: Number(customAmounts[id] || 0),
-          };
-        }).filter(s => s.amount > 0)
-      : [];
-    const data = { ...form, amount: Number(form.amount), splits };
-    if (isNew) await addExpense(tripId, data);
-    else await updateExpense(tripId, expId, data);
-    safeBack();
+    
+    if (form.splitType === 'detail') {
+      const total = form.participants.reduce((s, id) => s + (Number(customAmounts[id]) || 0), 0);
+      const diff = Number(form.amount) - total;
+      if (Math.abs(diff) > 1) {
+        Alert.alert('Tổng không khớp', `Còn ${diff > 0 ? 'thiếu' : 'thừa'} ${Math.abs(diff).toLocaleString('vi-VN')}đ. Kiểm tra lại số tiền từng người.`);
+        return;
+      }
+    }
+    setSaving(true);
+    try {
+      const splits = form.splitType === 'detail'
+        ? form.participants.map(id => {
+            const member = trip?.members.find((m: Member) => safeGetId(m) === id);
+            return {
+              memberId: id,
+              memberName: member?.name.split(' ')[0] || id,
+              amount: Number(customAmounts[id] || 0),
+            };
+          }).filter(s => s.amount > 0)
+        : [];
+      const data = { ...form, amount: Number(form.amount), splits };
+      if (isNew) await addExpense(tripId, data);
+      else await updateExpense(tripId, expId, data);
+      safeBack();
+    } catch (err: any) {
+      Alert.alert('Lỗi', err?.message || 'Không thể lưu khoản chi. Kiểm tra kết nối mạng.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const amt = Number(form.amount) || 0;
   const perPerson = form.participants.length > 0 ? Math.round(amt / form.participants.length) : 0;
+  
+  const detailTotal = form.participants.reduce((s, id) => s + (Number(customAmounts[id]) || 0), 0);
+  const detailDiff = amt - detailTotal;
 
   return (
     <>
@@ -475,10 +596,14 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           onToggle={(v: string) => setForm(p => ({ ...p, category: v as ExpenseCategory }))}
           colors={EXP_CAT_COLOR} />
 
-        {trip && (
-          <MemberPicker label="Người trả tiền" members={trip.members}
-            selected={[form.paidBy]} single
-            onToggle={(name: string) => setForm(p => ({ ...p, paidBy: name }))} />
+        {trip && trip.members && (
+          <MemberPicker
+            label="Người trả tiền"
+            members={trip.members}
+            selected={form.paidBy ? [form.paidBy] : []}
+            single
+            onToggle={(id: string) => setForm(p => ({ ...p, paidBy: id }))}
+          />
         )}
 
         <View style={styles.fieldGroup}>
@@ -487,7 +612,17 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
             {(['equal', 'detail'] as const).map((s: 'equal' | 'detail') => (
               <TouchableOpacity key={s}
                 style={[styles.splitBtn, form.splitType === s && styles.splitBtnActive]}
-                onPress={() => setForm(p => ({ ...p, splitType: s }))}
+                onPress={() => {
+                  if (s === 'detail' && form.splitType === 'equal' && amt > 0 && form.participants.length > 0) {
+                    const autoAmount = Math.round(amt / form.participants.length);
+                    const updatedAmounts: Record<string, string> = {};
+                    form.participants.forEach(id => {
+                      updatedAmounts[id] = String(autoAmount);
+                    });
+                    setCustomAmounts(updatedAmounts);
+                  }
+                  setForm(p => ({ ...p, splitType: s }));
+                }}
               >
                 <Ionicons name={s === 'equal' ? 'people-outline' : 'list-outline'} size={16}
                   color={form.splitType === s ? '#1B4F8A' : '#9CA3AF'} />
@@ -499,16 +634,12 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           </View>
         </View>
 
-        {trip && (
+        {trip && trip.members && (
           <MemberPicker
             label={`Người tham gia (${form.participants.length}/${trip.members.length})`}
-            members={trip.members} selected={form.participants}
-            onToggle={(id: string) => setForm(p => ({
-              ...p,
-              participants: p.participants.includes(id)
-                ? p.participants.filter(x => x !== id)
-                : [...p.participants, id],
-            }))}
+            members={trip.members}
+            selected={form.participants}
+            onToggle={toggleParticipant}
           />
         )}
 
@@ -519,47 +650,52 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           </View>
         )}
 
-        {form.splitType === 'detail' && trip && form.participants.length > 0 && (
+        {form.splitType === 'detail' && trip && trip.members && form.participants.length > 0 && (
           <View style={styles.fieldGroup}>
             <SectionLabel text="Nhập số tiền từng người" />
             {trip.members
-              .filter((m: Member) => form.participants.includes(m.id))
-              .map((m: Member) => (
-                <View key={m.id} style={styles.detailRow}>
-                  <View style={styles.memberAv}>
-                    <Text style={styles.memberAvText}>{m.initials?.slice(0,1) || m.name[0]}</Text>
+              .filter((m: Member) => form.participants.includes(safeGetId(m)))
+              .map((m: Member, idx: number) => {
+                const memberId = safeGetId(m) || `detail-mem-${idx}`;
+                const rawVal = customAmounts[memberId] ?? '';
+                return (
+                  <View key={`expense-detail-row-${memberId}`} style={styles.detailRow}>
+                    <View style={styles.memberAv}>
+                      <Text style={styles.memberAvText}>{m.initials?.slice(0,1) || m.name?.[0] || '?'}</Text>
+                    </View>
+                    <Text style={styles.detailName}>{m.name ? m.name.split(' ')[0] : 'N/A'}</Text>
+                    <View style={styles.detailInputWrap}>
+                      <TextInput
+                        style={styles.detailInput}
+                        value={rawVal ? Number(rawVal).toLocaleString('vi-VN') : ''}
+                        onChangeText={v => {
+                          const raw = v.replace(/\D/g, '');
+                          setCustomAmounts(prev => ({ ...prev, [memberId]: raw }));
+                        }}
+                        placeholder="0"
+                        placeholderTextColor="#C0C8D0"
+                        keyboardType="numeric"
+                        textAlign="right"
+                      />
+                      <Text style={styles.detailCurrency}>đ</Text>
+                    </View>
                   </View>
-                  <Text style={styles.detailName}>{m.name.split(' ')[0]}</Text>
-                  <View style={styles.detailInputWrap}>
-                    <TextInput
-                      style={styles.detailInput}
-                      value={customAmounts[m.id] ? Number(customAmounts[m.id]).toLocaleString('vi-VN') : ''}
-                      onChangeText={v => {
-                        const raw = v.replace(/\D/g, '');
-                        setCustomAmounts(prev => ({ ...prev, [m.id]: raw }));
-                      }}
-                      placeholder="0"
-                      placeholderTextColor="#C0C8D0"
-                      keyboardType="numeric"
-                      textAlign="right"
-                    />
-                    <Text style={styles.detailCurrency}>đ</Text>
-                  </View>
-                </View>
-              ))}
-            {/* Total check */}
-            {(() => {
-              const detailTotal = form.participants.reduce((s, id) => s + (Number(customAmounts[id]) || 0), 0);
-              const diff = amt - detailTotal;
-              return (
-                <View style={[styles.detailTotalRow, diff !== 0 && { backgroundColor: '#FEF3C7' }]}>
-                  <Text style={styles.detailTotalLabel}>
-                    {diff === 0 ? '✅ Khớp' : diff > 0 ? `⚠️ Còn thiếu ${diff.toLocaleString('vi-VN')}đ` : `⚠️ Vượt quá ${Math.abs(diff).toLocaleString('vi-VN')}đ`}
+                );
+              })}
+            
+            {detailDiff !== 0 && amt > 0 && (
+              <View style={[styles.detailTotalRow, styles.warningBox]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="warning-outline" size={16} color="#D97706" style={{ marginRight: 6 }} />
+                  <Text style={styles.warningText}>
+                    {detailDiff > 0
+                      ? `Còn thiếu ${detailDiff.toLocaleString('vi-VN')}đ`
+                      : `Vượt quá ${Math.abs(detailDiff).toLocaleString('vi-VN')}đ`}
                   </Text>
-                  <Text style={styles.detailTotalAmt}>{detailTotal.toLocaleString('vi-VN')} đ</Text>
                 </View>
-              );
-            })()}
+                <Text style={styles.warningTotalAmt}>{detailTotal.toLocaleString('vi-VN')} đ</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -573,8 +709,8 @@ function ExpenseForm({ tripId, expId }: { tripId: string; expId: string }) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={save}>
-          <Text style={styles.primaryBtnText}>{isNew ? '+ Lưu khoản chi' : '✓ Lưu thay đổi'}</Text>
+        <TouchableOpacity style={[styles.primaryBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
+          <Text style={styles.primaryBtnText}>{saving ? 'Đang lưu...' : isNew ? '+ Lưu khoản chi' : '✓ Lưu thay đổi'}</Text>
         </TouchableOpacity>
 
         {!isNew && (
@@ -639,25 +775,28 @@ function MemberForm({ tripId }: { tripId: string }) {
           </View>
         </View>
 
-        {trip && trip.members.length > 0 && (
+        {trip && trip.members && trip.members.length > 0 && (
           <View style={styles.fieldGroup}>
             <SectionLabel text={`Thành viên hiện tại (${trip.members.length})`} />
-            {trip.members.map((m: Member) => (
-              <View key={m.id} style={styles.existingMemberRow}>
-                <View style={[styles.memberAv, m.role === 'leader' && { backgroundColor: '#F59E0B' }]}>
-                  <Text style={styles.memberAvText}>{m.initials?.slice(0, 1) || m.name[0]}</Text>
+            {trip.members.map((m: Member, index: number) => {
+              const memberId = m.id || `member-list-${index}`;
+              return (
+                <View key={`existing-member-row-${memberId}`} style={styles.existingMemberRow}>
+                  <View style={[styles.memberAv, m.role === 'leader' && { backgroundColor: '#F59E0B' }]}>
+                    <Text style={styles.memberAvText}>{m.initials?.slice(0, 1) || m.name?.[0] || '?'}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.memberChipNameText}>{m.name || 'No Name'}</Text>
+                    <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{m.phone || ''}</Text>
+                  </View>
+                  <View style={m.role === 'leader' ? styles.leaderBadgeSm : styles.memberBadgeSm}>
+                    <Text style={m.role === 'leader' ? styles.leaderBadgeSmText : styles.memberBadgeSmText}>
+                      {m.role === 'leader' ? 'Trưởng' : 'Thành viên'}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.memberChipNameText}>{m.name}</Text>
-                  <Text style={{ fontSize: 12, color: '#9CA3AF' }}>{m.phone}</Text>
-                </View>
-                <View style={m.role === 'leader' ? styles.leaderBadgeSm : styles.memberBadgeSm}>
-                  <Text style={m.role === 'leader' ? styles.leaderBadgeSmText : styles.memberBadgeSmText}>
-                    {m.role === 'leader' ? 'Trưởng' : 'Thành viên'}
-                  </Text>
-                </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -702,7 +841,7 @@ const styles = StyleSheet.create({
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6', borderWidth: 1.5, borderColor: '#E5E7EB' },
   tagText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
   memberGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  memberChip: { alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', minWidth: 60 },
+  memberChip: { alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12, borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', minWidth: 60, position: 'relative' },
   memberChipActive: { borderColor: '#1B4F8A', backgroundColor: '#EFF6FF' },
   memberAv: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#9CA3AF', justifyContent: 'center', alignItems: 'center' },
   memberAvText: { color: '#fff', fontWeight: '700', fontSize: 12 },
@@ -740,12 +879,19 @@ const styles = StyleSheet.create({
   leaderBadgeSmText: { fontSize: 11, color: '#92400E', fontWeight: '700' },
   memberBadgeSm: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   memberBadgeSmText: { fontSize: 11, color: '#6B7280', fontWeight: '600' },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  memberCheck: { position: 'absolute', top: 4, right: 4, width: 14, height: 14, borderRadius: 7, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   detailName: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
-  detailInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#F9FAFB' },
+  detailInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#F9FAFB', minWidth: 120 },
   detailInput: { minWidth: 80, fontSize: 15, color: '#1B4F8A', fontWeight: '700', textAlign: 'right' },
   detailCurrency: { fontSize: 13, color: '#1B4F8A', fontWeight: '600' },
-  detailTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ECFDF5', borderRadius: 10, padding: 12, marginTop: 8 },
+  detailTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ECFDF5', borderRadius: 10, padding: 12, marginTop: 8, borderWidth: 1, borderColor: '#BBF7D0' },
   detailTotalLabel: { fontSize: 13, fontWeight: '600', color: '#374151' },
   detailTotalAmt: { fontSize: 15, fontWeight: '800', color: '#1B4F8A' },
+  warningBox: {
+    backgroundColor: '#FEF3C7', borderColor: '#FCD34D', borderWidth: 1, borderRadius: 8,
+    paddingVertical: 12, paddingHorizontal: 16, marginTop: 12
+  },
+  warningText: { color: '#B45309', fontSize: 14, fontWeight: '600' },
+  warningTotalAmt: { color: '#1B4F8A', fontSize: 15, fontWeight: '700' },
 });

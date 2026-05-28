@@ -406,7 +406,7 @@ TripMate/
 
 | Resource | URL |
 |----------|-----|
-| 🌐 Landing Page | [Xem landing page](https://tripmate.netlify.app) |
+| 🌐 Landing Page | [Xem landing page](https://trip-mate-landing-page.vercel.app/) |
 | 📖 API Docs | [tripmate-production-1680.up.railway.app/api-docs](https://tripmate-production-1680.up.railway.app/api-docs) |
 | 📦 APK Download | [Google Drive — thêm link sau khi build] |
 | 📝 User Survey | [Google Forms — thêm link] |

@@ -79,8 +79,8 @@ const MOCK_TRIPS: Trip[] = [
       { id: 'c3', tripId: 'trip-1', name: 'Đặt xe limousine', category: 'todo',     assignee: 'Minh', dueDate: '25/06/2025', note: '', completed: true  },
     ],
     expenses: [
-      { id: 'e1', tripId: 'trip-1', name: 'Xe limousine',  amount: 1200000, category: 'Di chuyển', paidBy: 'Bao',  date: '28/06/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
-      { id: 'e2', tripId: 'trip-1', name: 'Khách sạn Ana', amount: 4800000, category: 'Chỗ ở',     paidBy: 'Alex', date: '29/06/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
+      { id: 'e1', tripId: 'trip-1', name: 'Xe limousine',  amount: 1200000, category: 'Di chuyển', paidBy: 'm2',  date: '28/06/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
+      { id: 'e2', tripId: 'trip-1', name: 'Khách sạn Ana', amount: 4800000, category: 'Chỗ ở',     paidBy: 'm1', date: '29/06/2025', splitType: 'equal', participants: ['m1','m2','m3','m4'], splits: [] },
     ],
   },
   {
@@ -99,55 +99,55 @@ const MOCK_TRIPS: Trip[] = [
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]       = useState<User | null>(null);
-  const [trips, setTrips]     = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isOnline, setIsOnline] = useState(false);
+  export function AppProvider({ children }: { children: React.ReactNode }) {
+    const [user, setUser]       = useState<User | null>(null);
+    const [trips, setTrips]     = useState<Trip[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isOnline, setIsOnline] = useState(false);
 
-  // ── Bootstrap ────────────────────────────────────────────────────────────────
+    // ── Bootstrap ────────────────────────────────────────────────────────────────
 
-  useEffect(() => { bootstrap(); }, []);
+    useEffect(() => { bootstrap(); }, []);
 
-  const bootstrap = async () => {
-    analytics.init();
-    logInfo('App', 'Bootstrapping...');
-    try {
-      const token = await getToken();
-      if (token) {
-        try {
-          const [userData, tripsData] = await Promise.all([api.auth.me(), api.trips.list()]);
-          setUser(userData);
-          setTrips(tripsData);
-          setIsOnline(true);
-          await Promise.all([
-            AsyncStorage.setItem(USER_CACHE_KEY,  JSON.stringify(userData)),
-            AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(tripsData)),
-          ]);
-          analytics.identify(userData.id, { email: userData.email });
-          logInfo('App', `Online – loaded ${tripsData.length} trips for ${userData.email}`);
-        } catch (apiErr: any) {
-          logWarn('App', 'API unreachable, loading cache. Reason: ' + apiErr?.message);
-          const [cu, ct] = await Promise.all([
-            AsyncStorage.getItem(USER_CACHE_KEY),
-            AsyncStorage.getItem(TRIPS_CACHE_KEY),
-          ]);
-          if (cu) setUser(JSON.parse(cu));
+    const bootstrap = async () => {
+      analytics.init();
+      logInfo('App', 'Bootstrapping...');
+      try {
+        const token = await getToken();
+        if (token) {
+          try {
+            const [userData, tripsData] = await Promise.all([api.auth.me(), api.trips.list()]);
+            setUser(userData);
+            setTrips(tripsData);
+            setIsOnline(true);
+            await Promise.all([
+              AsyncStorage.setItem(USER_CACHE_KEY,  JSON.stringify(userData)),
+              AsyncStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(tripsData)),
+            ]);
+            analytics.identify(userData.id, { email: userData.email });
+            logInfo('App', `Online – loaded ${tripsData.length} trips for ${userData.email}`);
+          } catch (apiErr: any) {
+            logWarn('App', 'API unreachable, loading cache. Reason: ' + apiErr?.message);
+            const [cu, ct] = await Promise.all([
+              AsyncStorage.getItem(USER_CACHE_KEY),
+              AsyncStorage.getItem(TRIPS_CACHE_KEY),
+            ]);
+            if (cu) setUser(JSON.parse(cu));
+            setTrips(ct ? JSON.parse(ct) : MOCK_TRIPS);
+            setIsOnline(false);
+          }
+        } else {
+          logInfo('App', 'No token – showing demo data');
+          const ct = await AsyncStorage.getItem(TRIPS_CACHE_KEY);
           setTrips(ct ? JSON.parse(ct) : MOCK_TRIPS);
-          setIsOnline(false);
         }
-      } else {
-        logInfo('App', 'No token – showing demo data');
-        const ct = await AsyncStorage.getItem(TRIPS_CACHE_KEY);
-        setTrips(ct ? JSON.parse(ct) : MOCK_TRIPS);
+      } catch (err: any) {
+        logError('App', 'Bootstrap unexpected error', err);
+        setTrips(MOCK_TRIPS);
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      logError('App', 'Bootstrap unexpected error', err);
-      setTrips(MOCK_TRIPS);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
   // ── Refresh trips ─────────────────────────────────────────────────────────────
 

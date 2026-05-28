@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../../context/AppContext';
 import { isValidEmail, isValidPassword, isValidPhone } from '../../utils/helpers';
+import { logError, formatErrorForAlert } from '../../utils/logger';
 
 type FormKey = 'email' | 'username' | 'phone' | 'password' | 'confirm';
 type FormErrors = Partial<Record<FormKey, string>>;
@@ -124,8 +125,8 @@ export default function SignUpScreen() {
         setErrors({ email: 'Email hoặc số điện thoại đã được sử dụng' });
       }
     } catch (e: any) {
-      console.error('[SignUp] Unexpected error:', e?.message);
-      Alert.alert('Lỗi', 'Đã xảy ra lỗi. Vui lòng thử lại.');
+      logError('SignUp', 'Unexpected error', e);
+      Alert.alert('Lỗi đăng ký', formatErrorForAlert(e));
     } finally {
       setLoading(false);
     }
